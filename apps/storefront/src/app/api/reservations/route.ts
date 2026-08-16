@@ -1,28 +1,21 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
+import {
+  getPublicApiUrl,
+  normalizeStorefrontHost,
+  resolveStorefrontHostname,
+} from "../../../lib/public-api";
+
 export const dynamic = "force-dynamic";
 
-function normalizeHost(value: string | null): string | null {
-  if (!value) return null;
-  const host = value.split(",")[0]?.trim().toLowerCase().split(":")[0];
-  return host || null;
-}
-
 export async function POST(request: Request) {
-  const apiUrl = process.env.MANDYS_API_URL ?? process.env.NEXT_PUBLIC_API_URL;
-  if (!apiUrl) {
-    return NextResponse.json(
-      { error: "API_UNAVAILABLE", message: "Reservations are not connected in this environment" },
-      { status: 503 },
-    );
-  }
+  const apiUrl = getPublicApiUrl();
 
   const requestHeaders = await headers();
-  const forwardedHost = normalizeHost(requestHeaders.get("x-forwarded-host"));
-  const host = forwardedHost ?? normalizeHost(requestHeaders.get("host"));
-  const configuredHostname = normalizeHost(process.env.MANDYS_STOREFRONT_HOSTNAME ?? null);
-  const hostname = configuredHostname ?? host;
+  const forwardedHost = normalizeStorefrontHost(requestHeaders.get("x-forwarded-host"));
+  const host = forwardedHost ?? normalizeStorefrontHost(requestHeaders.get("host"));
+  const hostname = resolveStorefrontHostname(host);
 
   if (!hostname) {
     return NextResponse.json(
@@ -40,7 +33,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const response = await fetch(`${apiUrl.replace(/\/$/, "")}/v1/public/reservations`, {
+    const response = await fetch(`${apiUrl}/v1/public/reservations`, {
       method: "POST",
       cache: "no-store",
       headers: {
