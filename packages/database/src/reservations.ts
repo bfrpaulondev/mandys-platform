@@ -232,17 +232,17 @@ export async function createReservation(
       .values({
         organizationId: context.organizationId,
         locationId: input.locationId,
-        customerId: input.customerId,
-        diningAreaId: input.diningAreaId,
-        tableId: input.tableId,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         partySize: input.partySize,
         guestName: input.guestName,
-        guestEmail: input.guestEmail,
-        guestPhone: input.guestPhone,
-        notes: input.notes,
         source: "backoffice",
+        ...(input.customerId ? { customerId: input.customerId } : {}),
+        ...(input.diningAreaId ? { diningAreaId: input.diningAreaId } : {}),
+        ...(input.tableId ? { tableId: input.tableId } : {}),
+        ...(input.guestEmail ? { guestEmail: input.guestEmail } : {}),
+        ...(input.guestPhone ? { guestPhone: input.guestPhone } : {}),
+        ...(input.notes ? { notes: input.notes } : {}),
       })
       .returning();
 
@@ -252,7 +252,6 @@ export async function createReservation(
 
     await tx.insert(auditLogs).values({
       organizationId: context.organizationId,
-      actorUserId: context.userId,
       action: "reservation.created",
       entityType: "reservation",
       entityId: created.id,
@@ -262,6 +261,7 @@ export async function createReservation(
         partySize: created.partySize,
         startsAt: created.startsAt.toISOString(),
       },
+      ...(context.userId ? { actorUserId: context.userId } : {}),
     });
 
     return created;
@@ -293,8 +293,9 @@ export async function updateReservationStatus(
 
     if (current.status === status) return current;
 
-    if (!allowedStatusTransitions[current.status].includes(status)) {
-      throw new InvalidReservationTransitionError(current.status, status);
+    const nextStatuses = allowedStatusTransitions[current.status as ReservationStatus] ?? [];
+    if (!nextStatuses.includes(status)) {
+      throw new InvalidReservationTransitionError(current.status as ReservationStatus, status);
     }
 
     const [updated] = await tx
@@ -318,7 +319,6 @@ export async function updateReservationStatus(
 
     await tx.insert(auditLogs).values({
       organizationId: context.organizationId,
-      actorUserId: context.userId,
       action: "reservation.status_changed",
       entityType: "reservation",
       entityId: updated.id,
@@ -326,6 +326,7 @@ export async function updateReservationStatus(
         from: current.status,
         to: updated.status,
       },
+      ...(context.userId ? { actorUserId: context.userId } : {}),
     });
 
     return updated;
