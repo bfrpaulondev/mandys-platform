@@ -9,6 +9,14 @@ import { registerCoreRoutes } from "./routes/core";
 import { registerHealthRoutes } from "./routes/health";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 
+function getHttpStatus(error: unknown): number {
+  if (typeof error !== "object" || error === null || !("statusCode" in error)) return 500;
+  const statusCode = (error as { statusCode?: unknown }).statusCode;
+  return typeof statusCode === "number" && statusCode >= 400 && statusCode < 600
+    ? statusCode
+    : 500;
+}
+
 export async function buildApp(): Promise<FastifyInstance> {
   const env = getEnvironment();
   const app = Fastify({
@@ -59,18 +67,17 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler(async (error, request, reply) => {
-    const statusCode =
-      typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 600
-        ? error.statusCode
-        : 500;
+    const statusCode = getHttpStatus(error);
+    const normalizedError = error instanceof Error ? error : new Error("Unknown error");
 
     if (statusCode >= 500) {
-      request.log.error({ err: error }, "Unhandled API error");
+      request.log.error({ err: normalizedError }, "Unhandled API error");
     }
 
     return reply.status(statusCode).send({
-      error: statusCode >= 500 ? "INTERNAL_ERROR" : error.name || "REQUEST_ERROR",
-      message: statusCode >= 500 ? "An unexpected error occurred" : error.message,
+      error: statusCode >= 500 ? "INTERNAL_ERROR" : normalizedError.name || "REQUEST_ERROR",
+      message:
+        statusCode >= 500 ? "An unexpected error occurred" : normalizedError.message,
       requestId: request.id,
     });
   });
