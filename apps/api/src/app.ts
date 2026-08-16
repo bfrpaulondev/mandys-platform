@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { getEnvironment } from "./env";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerCoreRoutes } from "./routes/core";
+import { registerEventRoutes } from "./routes/events";
 import { registerHealthRoutes } from "./routes/health";
 import { registerMenuRoutes } from "./routes/menu";
 import { registerOnboardingRoutes } from "./routes/onboarding";
@@ -90,6 +91,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerCoreRoutes(app);
   await registerReservationRoutes(app);
   await registerMenuRoutes(app);
+  await registerEventRoutes(app);
 
   return app;
 }
