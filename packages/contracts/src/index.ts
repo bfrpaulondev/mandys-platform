@@ -115,11 +115,79 @@ export const updateReservationStatusSchema = z.object({
 });
 export type UpdateReservationStatusInput = z.infer<typeof updateReservationStatusSchema>;
 
-export const menuItemTranslationSchema = z.object({
+const localizedContentSchema = z.object({
   locale: z.enum(locales),
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(2_000).optional(),
 });
+
+function hasUniqueLocales(value: Array<{ locale: Locale }>): boolean {
+  return new Set(value.map((translation) => translation.locale)).size === value.length;
+}
+
+export const menuItemTranslationSchema = localizedContentSchema;
+export const menuTranslationSchema = localizedContentSchema;
+export const menuCategoryTranslationSchema = localizedContentSchema;
+
+const translationsSchema = z
+  .array(localizedContentSchema)
+  .min(1)
+  .max(locales.length)
+  .refine(hasUniqueLocales, { message: "translations must contain unique locales" });
+
+export const menuIdParamsSchema = z.object({ menuId: z.string().uuid() });
+export const menuCategoryIdParamsSchema = z.object({ categoryId: z.string().uuid() });
+export const menuItemIdParamsSchema = z.object({ menuItemId: z.string().uuid() });
+
+export const createMenuSchema = z.object({
+  locationId: z.string().uuid().nullable().optional(),
+  internalName: z.string().trim().min(2).max(160),
+  slug: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  translations: translationsSchema,
+});
+export type CreateMenuInput = z.infer<typeof createMenuSchema>;
+
+export const updateMenuSchema = z
+  .object({
+    internalName: z.string().trim().min(2).max(160).optional(),
+    slug: z
+      .string()
+      .trim()
+      .min(2)
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      .optional(),
+    isPublished: z.boolean().optional(),
+    translations: translationsSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, { message: "at least one field is required" });
+export type UpdateMenuInput = z.infer<typeof updateMenuSchema>;
+
+export const createMenuCategorySchema = z.object({
+  menuId: z.string().uuid(),
+  sortOrder: z.number().int().min(0).max(10_000).default(0),
+  isVisible: z.boolean().default(true),
+  translations: translationsSchema,
+});
+export type CreateMenuCategoryInput = z.infer<typeof createMenuCategorySchema>;
+
+export const createMenuItemSchema = z.object({
+  categoryId: z.string().uuid(),
+  sku: z.string().trim().min(1).max(80).optional(),
+  priceCents: z.number().int().min(0).max(100_000_000),
+  imageUrl: z.string().url().max(2_048).optional(),
+  isAvailable: z.boolean().default(true),
+  isFeatured: z.boolean().default(false),
+  sortOrder: z.number().int().min(0).max(10_000).default(0),
+  allergenIds: z.array(z.string().uuid()).max(50).default([]),
+  translations: translationsSchema,
+});
+export type CreateMenuItemInput = z.infer<typeof createMenuItemSchema>;
 
 export const healthResponseSchema = z.object({
   status: z.literal("ok"),
