@@ -1,3 +1,4 @@
 export { db, sql } from "./client";
 export * from "./schema";
 export * from "./tenant";
+export * from "./bootstrap";
