@@ -3,3 +3,4 @@ export * from "./schema";
 export * from "./tenant";
 export * from "./bootstrap";
 export * from "./core";
+export * from "./reservations";
