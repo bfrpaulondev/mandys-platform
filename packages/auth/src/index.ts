@@ -3,6 +3,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization } from "better-auth/plugins";
 
+import { ac, mandysRoles } from "./permissions";
+
 const trustedOrigins = [
   process.env.STOREFRONT_URL,
   process.env.BACKOFFICE_URL,
@@ -21,6 +23,9 @@ export const auth = betterAuth({
   trustedOrigins,
   plugins: [
     organization({
+      ac,
+      roles: mandysRoles,
+      creatorRole: "owner",
       allowUserToCreateOrganization: true,
       organizationLimit: 10,
       membershipLimit: 100,
@@ -33,3 +38,5 @@ export const auth = betterAuth({
 });
 
 export type Auth = typeof auth;
+export { ac, mandysRoles } from "./permissions";
+export type { MandysRole } from "./permissions";
