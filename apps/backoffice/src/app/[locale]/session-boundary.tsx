@@ -1,6 +1,7 @@
 "use client";
 
 import type { Locale } from "@mandys/i18n";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
@@ -11,30 +12,56 @@ const copy = {
   "pt-PT": {
     loading: "A verificar sessão…",
     unavailable: "Não foi possível verificar a sessão. Atualize a página para tentar novamente.",
+    dashboard: "Painel",
+    reservations: "Reservas",
+    menu: "Menu",
+    events: "Eventos",
+    settings: "Operação",
+    logout: "Sair",
   },
   "pt-BR": {
     loading: "Verificando sessão…",
     unavailable: "Não foi possível verificar a sessão. Atualize a página para tentar novamente.",
+    dashboard: "Painel",
+    reservations: "Reservas",
+    menu: "Cardápio",
+    events: "Eventos",
+    settings: "Operação",
+    logout: "Sair",
   },
   en: {
     loading: "Checking session…",
     unavailable: "We couldn't verify the session. Refresh the page to try again.",
+    dashboard: "Dashboard",
+    reservations: "Reservations",
+    menu: "Menu",
+    events: "Events",
+    settings: "Operations",
+    logout: "Sign out",
   },
   es: {
     loading: "Verificando la sesión…",
     unavailable: "No se pudo verificar la sesión. Actualiza la página para intentarlo de nuevo.",
+    dashboard: "Panel",
+    reservations: "Reservas",
+    menu: "Menú",
+    events: "Eventos",
+    settings: "Operación",
+    logout: "Salir",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 
 export function SessionBoundary({ locale, children }: { locale: Locale; children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isLogin = pathname.endsWith("/login");
   const [state, setState] = useState<"checking" | "ready" | "unavailable">(
-    pathname.endsWith("/login") ? "ready" : "checking",
+    isLogin ? "ready" : "checking",
   );
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    if (pathname.endsWith("/login")) {
+    if (isLogin) {
       setState("ready");
       return;
     }
@@ -60,9 +87,63 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
     return () => {
       cancelled = true;
     };
-  }, [locale, pathname, router]);
+  }, [isLogin, locale, router]);
 
-  if (state === "ready") return children;
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await authClient.signOut();
+      router.replace(`/${locale}/login`);
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
+  if (state === "ready" && isLogin) return children;
+
+  if (state === "ready") {
+    const c = copy[locale];
+    const links = [
+      { href: `/${locale}`, label: c.dashboard, exact: true },
+      { href: `/${locale}/reservations`, label: c.reservations },
+      { href: `/${locale}/menu`, label: c.menu },
+      { href: `/${locale}/events`, label: c.events },
+      { href: `/${locale}/settings`, label: c.settings },
+    ];
+
+    return (
+      <>
+        <nav className="sticky top-0 z-40 border-b border-[var(--mandys-border)] bg-[var(--mandys-background)]/95 backdrop-blur" aria-label="Mandy's">
+          <div className="mx-auto flex w-full max-w-[1500px] items-center gap-2 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8">
+            <Link href={`/${locale}`} className="mr-2 shrink-0 text-sm font-bold tracking-[-0.03em]">Mandy&apos;s</Link>
+            {links.map((link) => {
+              const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "text-[var(--mandys-foreground-muted)] hover:bg-[var(--mandys-surface-muted)] hover:text-[var(--mandys-foreground)]"}`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              disabled={signingOut}
+              className="ml-auto shrink-0 rounded-lg border border-[var(--mandys-border)] px-3 py-2 text-sm font-medium disabled:opacity-60"
+            >
+              {signingOut ? "…" : c.logout}
+            </button>
+          </div>
+        </nav>
+        {children}
+      </>
+    );
+  }
 
   return (
     <main className="grid min-h-screen place-items-center px-6">
