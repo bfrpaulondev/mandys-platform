@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@mandys/auth": "workspace:*",
+    "@mandys/contracts": "workspace:*",
     "@mandys/i18n": "workspace:*",
     "@mandys/theme-core": "workspace:*",
     "@mandys/theme-minimal": "workspace:*",
