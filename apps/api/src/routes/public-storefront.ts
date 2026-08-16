@@ -90,8 +90,14 @@ export async function registerPublicStorefrontRoutes(app: FastifyInstance): Prom
 
       try {
         const data = await createPublicReservation({
-          ...parsed.data,
+          hostname: parsed.data.hostname,
+          startsAt: parsed.data.startsAt,
           endsAt,
+          partySize: parsed.data.partySize,
+          guestName: parsed.data.guestName,
+          ...(parsed.data.guestEmail !== undefined ? { guestEmail: parsed.data.guestEmail } : {}),
+          ...(parsed.data.guestPhone !== undefined ? { guestPhone: parsed.data.guestPhone } : {}),
+          ...(parsed.data.notes !== undefined ? { notes: parsed.data.notes } : {}),
         });
         return reply.status(201).send({ data });
       } catch (error) {
