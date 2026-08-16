@@ -1,0 +1,4 @@
+{
+  "extends": "@mandys/tsconfig/base.json",
+  "include": ["src/**/*.ts"]
+}

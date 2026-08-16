@@ -1,0 +1,35 @@
+{
+  "name": "@mandys/platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mandy's multi-tenant restaurant operating platform",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "db:generate": "pnpm --filter @mandys/database db:generate",
+    "db:migrate": "pnpm --filter @mandys/database db:migrate",
+    "db:studio": "pnpm --filter @mandys/database db:studio"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": ">=8.5.18 <9",
+      "sharp": ">=0.35.0 <0.36"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.6.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

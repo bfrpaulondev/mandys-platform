@@ -1,0 +1,34 @@
+{
+  "name": "@mandys/backoffice",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack -p 3001",
+    "build": "next build --turbopack",
+    "start": "next start -p 3001",
+    "lint": "eslint src next.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@mandys/auth": "workspace:*",
+    "@mandys/i18n": "workspace:*",
+    "@mandys/theme-core": "workspace:*",
+    "@mandys/theme-minimal": "workspace:*",
+    "@mandys/ui": "workspace:*",
+    "better-auth": "^1.6.0",
+    "next": "16.2.12",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@mandys/tsconfig": "workspace:*",
+    "@serwist/turbopack": "^9.5.0",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.28.0",
+    "serwist": "^9.5.0",
+    "tailwindcss": "^4.3.0"
+  }
+}

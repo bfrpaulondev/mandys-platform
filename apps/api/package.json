@@ -1,0 +1,30 @@
+{
+  "name": "@mandys/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsup src/server.ts --format esm --platform node --target node24 --clean --out-dir dist",
+    "start": "node dist/server.js",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.0",
+    "@fastify/helmet": "^13.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@mandys/auth": "workspace:*",
+    "@mandys/contracts": "workspace:*",
+    "@mandys/database": "workspace:*",
+    "better-auth": "^1.6.0",
+    "fastify": "^5.5.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@mandys/tsconfig": "workspace:*",
+    "tsx": "^4.20.0",
+    "tsup": "^8.5.0"
+  }
+}

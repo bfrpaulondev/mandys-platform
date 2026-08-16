@@ -1,0 +1,22 @@
+{
+  "name": "@mandys/auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./permissions": "./src/permissions.ts"
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@mandys/database": "workspace:*",
+    "better-auth": "^1.6.0"
+  },
+  "devDependencies": {
+    "@mandys/tsconfig": "workspace:*"
+  }
+}
