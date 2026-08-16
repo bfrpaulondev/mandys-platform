@@ -189,6 +189,52 @@ export const createMenuItemSchema = z.object({
 });
 export type CreateMenuItemInput = z.infer<typeof createMenuItemSchema>;
 
+export const eventLeadStatusSchema = z.enum([
+  "new",
+  "contacted",
+  "proposal_sent",
+  "deposit_pending",
+  "confirmed",
+  "completed",
+  "lost",
+]);
+export type EventLeadStatus = z.infer<typeof eventLeadStatusSchema>;
+
+export const createEventLeadSchema = z
+  .object({
+    locationId: z.string().uuid().optional(),
+    customerId: z.string().uuid().optional(),
+    eventType: z.string().trim().min(2).max(120),
+    contactName: z.string().trim().min(2).max(160),
+    contactEmail: z.string().email().optional(),
+    contactPhone: z.string().trim().max(40).optional(),
+    eventAt: z.coerce.date().optional(),
+    partySize: z.number().int().min(1).max(10_000).optional(),
+    budgetMinCents: z.number().int().min(0).max(100_000_000).optional(),
+    budgetMaxCents: z.number().int().min(0).max(100_000_000).optional(),
+    notes: z.string().trim().max(4_000).optional(),
+  })
+  .refine(
+    (value) =>
+      value.budgetMinCents === undefined ||
+      value.budgetMaxCents === undefined ||
+      value.budgetMaxCents >= value.budgetMinCents,
+    { message: "budgetMaxCents must be greater than or equal to budgetMinCents", path: ["budgetMaxCents"] },
+  );
+export type CreateEventLeadInput = z.infer<typeof createEventLeadSchema>;
+
+export const eventLeadListQuerySchema = z.object({
+  status: eventLeadStatusSchema.optional(),
+  locationId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+export type EventLeadListQuery = z.infer<typeof eventLeadListQuerySchema>;
+
+export const eventLeadIdParamsSchema = z.object({ eventLeadId: z.string().uuid() });
+
+export const updateEventLeadStatusSchema = z.object({ status: eventLeadStatusSchema });
+export type UpdateEventLeadStatusInput = z.infer<typeof updateEventLeadStatusSchema>;
+
 export const healthResponseSchema = z.object({
   status: z.literal("ok"),
   service: z.literal("mandys-api"),
