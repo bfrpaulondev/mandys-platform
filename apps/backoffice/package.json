@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3001",
-    "build": "next build",
+    "build": "next build --turbopack",
     "start": "next start -p 3001",
     "lint": "eslint src next.config.ts",
     "typecheck": "tsc --noEmit",
@@ -16,18 +16,19 @@
     "@mandys/theme-core": "workspace:*",
     "@mandys/theme-minimal": "workspace:*",
     "@mandys/ui": "workspace:*",
-    "@serwist/next": "^9.0.0",
     "better-auth": "^1.6.0",
     "next": "16.2.11",
     "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "serwist": "^9.0.0"
+    "react-dom": "19.2.0"
   },
   "devDependencies": {
     "@mandys/tsconfig": "workspace:*",
+    "@serwist/turbopack": "^9.5.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.28.0",
+    "serwist": "^9.5.0",
     "tailwindcss": "^4.3.0"
   }
 }
