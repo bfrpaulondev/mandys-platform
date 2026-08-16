@@ -92,6 +92,29 @@ export const createReservationSchema = z
   });
 export type CreateReservationInput = z.infer<typeof createReservationSchema>;
 
+export const reservationListQuerySchema = z
+  .object({
+    locationId: z.string().uuid().optional(),
+    status: reservationStatusSchema.optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(100),
+  })
+  .refine((value) => !value.from || !value.to || value.to > value.from, {
+    message: "to must be after from",
+    path: ["to"],
+  });
+export type ReservationListQuery = z.infer<typeof reservationListQuerySchema>;
+
+export const reservationIdParamsSchema = z.object({
+  reservationId: z.string().uuid(),
+});
+
+export const updateReservationStatusSchema = z.object({
+  status: reservationStatusSchema,
+});
+export type UpdateReservationStatusInput = z.infer<typeof updateReservationStatusSchema>;
+
 export const menuItemTranslationSchema = z.object({
   locale: z.enum(locales),
   name: z.string().trim().min(1).max(160),
