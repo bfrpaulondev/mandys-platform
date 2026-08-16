@@ -1,0 +1,22 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+dist/
+coverage/
+.turbo/
+
+# environment
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.log
+
+# local tooling
+.vscode/
+.idea/
