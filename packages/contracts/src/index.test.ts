@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createEventLeadSchema,
   createMenuItemSchema,
   createMenuSchema,
   createReservationSchema,
+  eventLeadListQuerySchema,
   reservationListQuerySchema,
+  updateEventLeadStatusSchema,
   updateMenuSchema,
   updateReservationStatusSchema,
 } from "./index";
@@ -107,5 +110,39 @@ describe("menu contracts", () => {
     expect(parsed.priceCents).toBe(1290);
     expect(parsed.isAvailable).toBe(true);
     expect(parsed.allergenIds).toHaveLength(1);
+  });
+});
+
+describe("event lead contracts", () => {
+  it("accepts a group event lead with optional commercial context", () => {
+    const parsed = createEventLeadSchema.parse({
+      eventType: "Corporate dinner",
+      contactName: "Maria Costa",
+      contactEmail: "maria@example.com",
+      eventAt: "2026-09-18T19:30:00.000Z",
+      partySize: 36,
+      budgetMinCents: 180000,
+      budgetMaxCents: 250000,
+    });
+
+    expect(parsed.eventAt).toBeInstanceOf(Date);
+    expect(parsed.partySize).toBe(36);
+  });
+
+  it("rejects inverted budget ranges", () => {
+    expect(
+      createEventLeadSchema.safeParse({
+        eventType: "Wedding",
+        contactName: "Ana Silva",
+        budgetMinCents: 400000,
+        budgetMaxCents: 300000,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("caps event pagination and validates supported states", () => {
+    expect(eventLeadListQuerySchema.safeParse({ limit: "201" }).success).toBe(false);
+    expect(updateEventLeadStatusSchema.parse({ status: "proposal_sent" }).status).toBe("proposal_sent");
+    expect(updateEventLeadStatusSchema.safeParse({ status: "cancelled" }).success).toBe(false);
   });
 });
