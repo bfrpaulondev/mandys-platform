@@ -8,6 +8,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { registerCoreRoutes } from "./routes/core";
 import { registerHealthRoutes } from "./routes/health";
 import { registerOnboardingRoutes } from "./routes/onboarding";
+import { registerReservationRoutes } from "./routes/reservations";
 
 function getHttpStatus(error: unknown): number {
   if (typeof error !== "object" || error === null || !("statusCode" in error)) return 500;
@@ -86,6 +87,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerOnboardingRoutes(app);
   await registerCoreRoutes(app);
+  await registerReservationRoutes(app);
 
   return app;
 }

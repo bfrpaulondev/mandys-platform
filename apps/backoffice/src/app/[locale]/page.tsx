@@ -1,5 +1,5 @@
 import { isLocale, localeLabels, t, type Locale } from "@mandys/i18n";
-import { Button } from "@mandys/ui";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 const copy = {
@@ -117,7 +117,12 @@ export default async function DashboardPage({
             <span className="rounded-full bg-[var(--mandys-surface-muted)] px-3 py-1 text-xs font-medium">{t(locale, "today")}</span>
           </div>
           <div className="mt-8">
-            <Button>{c.manage}</Button>
+            <Link
+              href={`/${locale}/reservations`}
+              className="inline-flex min-h-11 items-center justify-center rounded-[var(--mandys-radius-sm)] bg-[var(--mandys-accent)] px-4 text-sm font-medium text-[var(--mandys-accent-foreground)] transition hover:brightness-95"
+            >
+              {c.manage}
+            </Link>
           </div>
         </article>
 
