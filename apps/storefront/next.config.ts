@@ -9,6 +9,13 @@ const nextConfig: NextConfig = {
     "@mandys/theme-minimal",
     "@mandys/ui",
   ],
+  env: {
+    MANDYS_API_URL:
+      process.env.MANDYS_API_URL ??
+      "https://dbfmjdissqsdhxhmqkqp.supabase.co/functions/v1/mandys-public",
+    MANDYS_STOREFRONT_HOSTNAME:
+      process.env.MANDYS_STOREFRONT_HOSTNAME ?? "demo.mandys.local",
+  },
   experimental: {
     typedEnv: true,
   },
