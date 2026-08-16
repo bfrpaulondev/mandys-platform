@@ -11,7 +11,9 @@ const copy = {
     next: "Próxima reserva",
     manage: "Gerir reservas",
     manageMenu: "Gerir menu",
+    manageEvents: "Gerir eventos",
     menu: "Menu",
+    events: "Eventos",
     modules: "Módulos",
     included: "Ativo",
     locked: "Disponível como módulo",
@@ -28,7 +30,9 @@ const copy = {
     next: "Próxima reserva",
     manage: "Gerenciar reservas",
     manageMenu: "Gerenciar cardápio",
+    manageEvents: "Gerenciar eventos",
     menu: "Cardápio",
+    events: "Eventos",
     modules: "Módulos",
     included: "Ativo",
     locked: "Disponível como módulo",
@@ -45,7 +49,9 @@ const copy = {
     next: "Next reservation",
     manage: "Manage reservations",
     manageMenu: "Manage menu",
+    manageEvents: "Manage events",
     menu: "Menu",
+    events: "Events",
     modules: "Modules",
     included: "Active",
     locked: "Available as a module",
@@ -62,7 +68,9 @@ const copy = {
     next: "Próxima reserva",
     manage: "Gestionar reservas",
     manageMenu: "Gestionar menú",
+    manageEvents: "Gestionar eventos",
     menu: "Menú",
+    events: "Eventos",
     modules: "Módulos",
     included: "Activo",
     locked: "Disponible como módulo",
@@ -137,6 +145,12 @@ export default async function DashboardPage({
             >
               {c.manageMenu}
             </Link>
+            <Link
+              href={`/${locale}/events`}
+              className="inline-flex min-h-11 items-center justify-center rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] px-4 text-sm font-medium transition hover:bg-[var(--mandys-surface-muted)]"
+            >
+              {c.manageEvents}
+            </Link>
           </div>
         </article>
 
@@ -152,6 +166,12 @@ export default async function DashboardPage({
             <div className="border-t border-white/10 pt-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-medium">{c.menu}</p>
+                <span className="text-xs text-white/60">{c.included}</span>
+              </div>
+            </div>
+            <div className="border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">{c.events}</p>
                 <span className="text-xs text-white/60">{c.included}</span>
               </div>
             </div>
