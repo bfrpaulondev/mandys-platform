@@ -1,0 +1,37 @@
+:root {
+  --mandys-background: #f7f7f5;
+  --mandys-surface: #ffffff;
+  --mandys-surface-muted: #f0f0ed;
+  --mandys-foreground: #171715;
+  --mandys-foreground-muted: #6d6d67;
+  --mandys-border: #e3e3de;
+  --mandys-accent: #1f6b52;
+  --mandys-accent-foreground: #ffffff;
+  --mandys-danger: #b42318;
+  --mandys-radius-sm: 0.625rem;
+  --mandys-radius-md: 0.875rem;
+  --mandys-radius-lg: 1.25rem;
+  --mandys-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+  background: var(--mandys-background);
+}
+
+body {
+  margin: 0;
+  color: var(--mandys-foreground);
+  background: var(--mandys-background);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--mandys-accent);
+  outline-offset: 2px;
+}
