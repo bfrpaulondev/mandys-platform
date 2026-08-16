@@ -1,5 +1,6 @@
 export { db, sql } from "./client";
 export * from "./schema";
+export * from "./auth-schema";
 export * from "./tenant";
 export * from "./bootstrap";
 export * from "./core";
