@@ -4,7 +4,9 @@ import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { getEnvironment } from "./env";
+import { registerAuthRoutes } from "./routes/auth";
 import { registerHealthRoutes } from "./routes/health";
+import { registerOnboardingRoutes } from "./routes/onboarding";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const env = getEnvironment();
@@ -19,6 +21,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           "password",
           "token",
           "apiKey",
+          "body.password",
         ],
         censor: "[REDACTED]",
       },
@@ -54,7 +57,26 @@ export async function buildApp(): Promise<FastifyInstance> {
     return payload;
   });
 
+  app.setErrorHandler(async (error, request, reply) => {
+    const statusCode =
+      typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 600
+        ? error.statusCode
+        : 500;
+
+    if (statusCode >= 500) {
+      request.log.error({ err: error }, "Unhandled API error");
+    }
+
+    return reply.status(statusCode).send({
+      error: statusCode >= 500 ? "INTERNAL_ERROR" : error.name || "REQUEST_ERROR",
+      message: statusCode >= 500 ? "An unexpected error occurred" : error.message,
+      requestId: request.id,
+    });
+  });
+
   await registerHealthRoutes(app);
+  await registerAuthRoutes(app);
+  await registerOnboardingRoutes(app);
 
   return app;
 }
