@@ -18,6 +18,7 @@
     "@mandys/auth": "workspace:*",
     "@mandys/contracts": "workspace:*",
     "@mandys/database": "workspace:*",
+    "better-auth": "^1.6.0",
     "fastify": "^5.5.0",
     "zod": "^4.0.0"
   },
