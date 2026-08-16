@@ -10,6 +10,7 @@ import { registerEventRoutes } from "./routes/events";
 import { registerHealthRoutes } from "./routes/health";
 import { registerMenuRoutes } from "./routes/menu";
 import { registerOnboardingRoutes } from "./routes/onboarding";
+import { registerPublicStorefrontRoutes } from "./routes/public-storefront";
 import { registerReservationRoutes } from "./routes/reservations";
 
 function getHttpStatus(error: unknown): number {
@@ -86,6 +87,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await registerHealthRoutes(app);
+  await registerPublicStorefrontRoutes(app);
   await registerAuthRoutes(app);
   await registerOnboardingRoutes(app);
   await registerCoreRoutes(app);
