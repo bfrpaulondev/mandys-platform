@@ -5,3 +5,4 @@ export * from "./bootstrap";
 export * from "./core";
 export * from "./reservations";
 export * from "./menu";
+export * from "./events";
