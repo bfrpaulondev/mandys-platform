@@ -36,7 +36,7 @@ export function createDomainEvent<TPayload>(input: {
     id: input.id ?? crypto.randomUUID(),
     name: input.name,
     organizationId: input.organizationId,
-    actorUserId: input.actorUserId,
+    ...(input.actorUserId === undefined ? {} : { actorUserId: input.actorUserId }),
     occurredAt: input.occurredAt ?? new Date(),
     payload: input.payload,
   };
