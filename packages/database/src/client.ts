@@ -3,10 +3,13 @@ import postgres from "postgres";
 
 import * as schema from "./schema";
 
-const databaseUrl = process.env.DATABASE_URL;
+const isProduction = process.env.NODE_ENV === "production";
+const databaseUrl =
+  process.env.DATABASE_URL ??
+  (isProduction ? undefined : "postgres://postgres:postgres@127.0.0.1:5432/mandys");
 
 if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required");
+  throw new Error("DATABASE_URL is required in production");
 }
 
 const globalForDatabase = globalThis as unknown as {
@@ -16,13 +19,13 @@ const globalForDatabase = globalThis as unknown as {
 export const sql =
   globalForDatabase.mandysSql ??
   postgres(databaseUrl, {
-    max: process.env.NODE_ENV === "production" ? 10 : 3,
+    max: isProduction ? 10 : 3,
     idle_timeout: 20,
     connect_timeout: 10,
     prepare: false,
   });
 
-if (process.env.NODE_ENV !== "production") {
+if (!isProduction) {
   globalForDatabase.mandysSql = sql;
 }
 
