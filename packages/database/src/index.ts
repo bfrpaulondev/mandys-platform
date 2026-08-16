@@ -4,3 +4,4 @@ export * from "./tenant";
 export * from "./bootstrap";
 export * from "./core";
 export * from "./reservations";
+export * from "./menu";

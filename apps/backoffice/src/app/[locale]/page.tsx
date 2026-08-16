@@ -10,6 +10,8 @@ const copy = {
     occupancy: "ocupação prevista",
     next: "Próxima reserva",
     manage: "Gerir reservas",
+    manageMenu: "Gerir menu",
+    menu: "Menu",
     modules: "Módulos",
     included: "Ativo",
     locked: "Disponível como módulo",
@@ -25,6 +27,8 @@ const copy = {
     occupancy: "ocupação prevista",
     next: "Próxima reserva",
     manage: "Gerenciar reservas",
+    manageMenu: "Gerenciar cardápio",
+    menu: "Cardápio",
     modules: "Módulos",
     included: "Ativo",
     locked: "Disponível como módulo",
@@ -40,6 +44,8 @@ const copy = {
     occupancy: "forecast occupancy",
     next: "Next reservation",
     manage: "Manage reservations",
+    manageMenu: "Manage menu",
+    menu: "Menu",
     modules: "Modules",
     included: "Active",
     locked: "Available as a module",
@@ -55,6 +61,8 @@ const copy = {
     occupancy: "ocupación prevista",
     next: "Próxima reserva",
     manage: "Gestionar reservas",
+    manageMenu: "Gestionar menú",
+    menu: "Menú",
     modules: "Módulos",
     included: "Activo",
     locked: "Disponible como módulo",
@@ -116,12 +124,18 @@ export default async function DashboardPage({
             </div>
             <span className="rounded-full bg-[var(--mandys-surface-muted)] px-3 py-1 text-xs font-medium">{t(locale, "today")}</span>
           </div>
-          <div className="mt-8">
+          <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href={`/${locale}/reservations`}
               className="inline-flex min-h-11 items-center justify-center rounded-[var(--mandys-radius-sm)] bg-[var(--mandys-accent)] px-4 text-sm font-medium text-[var(--mandys-accent-foreground)] transition hover:brightness-95"
             >
               {c.manage}
+            </Link>
+            <Link
+              href={`/${locale}/menu`}
+              className="inline-flex min-h-11 items-center justify-center rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] px-4 text-sm font-medium transition hover:bg-[var(--mandys-surface-muted)]"
+            >
+              {c.manageMenu}
             </Link>
           </div>
         </article>
@@ -132,6 +146,12 @@ export default async function DashboardPage({
             <div>
               <div className="flex items-center justify-between gap-3">
                 <p className="font-medium">{t(locale, "reservations")}</p>
+                <span className="text-xs text-white/60">{c.included}</span>
+              </div>
+            </div>
+            <div className="border-t border-white/10 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">{c.menu}</p>
                 <span className="text-xs text-white/60">{c.included}</span>
               </div>
             </div>

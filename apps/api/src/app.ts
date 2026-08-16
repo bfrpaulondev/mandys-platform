@@ -7,6 +7,7 @@ import { getEnvironment } from "./env";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerCoreRoutes } from "./routes/core";
 import { registerHealthRoutes } from "./routes/health";
+import { registerMenuRoutes } from "./routes/menu";
 import { registerOnboardingRoutes } from "./routes/onboarding";
 import { registerReservationRoutes } from "./routes/reservations";
 
@@ -88,6 +89,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerOnboardingRoutes(app);
   await registerCoreRoutes(app);
   await registerReservationRoutes(app);
+  await registerMenuRoutes(app);
 
   return app;
 }
