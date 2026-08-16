@@ -14,7 +14,11 @@ import {
   reservations,
   restaurantTables,
 } from "./schema";
-import { withTenant, type TenantDatabaseContext } from "./tenant";
+import {
+  withTenant,
+  type TenantDatabaseContext,
+  type TenantTransaction,
+} from "./tenant";
 
 const activeReservationStatuses: ReservationStatus[] = ["pending", "confirmed", "seated"];
 
@@ -63,7 +67,7 @@ export class InvalidReservationTransitionError extends Error {
 }
 
 async function assertReservationsEnabled(
-  tx: Parameters<Parameters<typeof import("./client").db.transaction>[0]>[0],
+  tx: TenantTransaction,
   organizationId: string,
 ): Promise<void> {
   const [entitlement] = await tx
