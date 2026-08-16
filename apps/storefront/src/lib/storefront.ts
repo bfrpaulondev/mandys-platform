@@ -1,6 +1,12 @@
 import type { Locale } from "@mandys/i18n";
 import { headers } from "next/headers";
 
+import {
+  getPublicApiUrl,
+  normalizeStorefrontHost,
+  resolveStorefrontHostname,
+} from "./public-api";
+
 export type StorefrontMenuItem = {
   id: string;
   name: string;
@@ -239,27 +245,18 @@ function demoStorefront(locale: Locale): StorefrontData {
   };
 }
 
-function normalizeHost(value: string | null): string | null {
-  if (!value) return null;
-  const host = value.split(",")[0]?.trim().toLowerCase().split(":")[0];
-  return host || null;
-}
-
 export async function getStorefrontData(locale: Locale): Promise<StorefrontData> {
-  const apiUrl = process.env.MANDYS_API_URL ?? process.env.NEXT_PUBLIC_API_URL;
-  if (!apiUrl) return demoStorefront(locale);
-
+  const apiUrl = getPublicApiUrl();
   const requestHeaders = await headers();
-  const forwardedHost = normalizeHost(requestHeaders.get("x-forwarded-host"));
-  const host = forwardedHost ?? normalizeHost(requestHeaders.get("host"));
-  const configuredHostname = normalizeHost(process.env.MANDYS_STOREFRONT_HOSTNAME ?? null);
-  const hostname = configuredHostname ?? host;
+  const forwardedHost = normalizeStorefrontHost(requestHeaders.get("x-forwarded-host"));
+  const host = forwardedHost ?? normalizeStorefrontHost(requestHeaders.get("host"));
+  const hostname = resolveStorefrontHostname(host);
 
   if (!hostname) return demoStorefront(locale);
 
   try {
     const params = new URLSearchParams({ hostname, locale });
-    const response = await fetch(`${apiUrl.replace(/\/$/, "")}/v1/public/storefront?${params.toString()}`, {
+    const response = await fetch(`${apiUrl}/v1/public/storefront?${params.toString()}`, {
       cache: "no-store",
       headers: { accept: "application/json" },
     });
