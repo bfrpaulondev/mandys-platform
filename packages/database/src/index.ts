@@ -7,3 +7,4 @@ export * from "./reservations";
 export * from "./menu";
 export * from "./events";
 export * from "./public-storefront";
+export * from "./public-reservations";
