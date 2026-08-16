@@ -1,0 +1,7 @@
+[build]
+command = "pnpm --filter @mandys/storefront build"
+
+[build.environment]
+NODE_VERSION = "24"
+PNPM_VERSION = "10.15.0"
+PNPM_FLAGS = "--shamefully-hoist"
