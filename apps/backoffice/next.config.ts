@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
     "@mandys/theme-minimal",
     "@mandys/ui",
   ],
+  env: {
+    // Browser requests stay first-party. Next.js proxies them to the secured
+    // Mandy's runtime, so no database or service secret is exposed client-side.
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "/api/runtime",
+  },
   experimental: {
     typedEnv: true,
   },
