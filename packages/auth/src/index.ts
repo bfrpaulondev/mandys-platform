@@ -5,15 +5,24 @@ import { organization } from "better-auth/plugins";
 
 import { ac, mandysRoles } from "./permissions";
 
+const isProduction = process.env.NODE_ENV === "production";
+const authSecret =
+  process.env.BETTER_AUTH_SECRET ??
+  (isProduction ? undefined : "mandys-development-only-secret-change-me-0001");
+
+if (!authSecret) {
+  throw new Error("BETTER_AUTH_SECRET is required in production");
+}
+
 const trustedOrigins = [
-  process.env.STOREFRONT_URL,
-  process.env.BACKOFFICE_URL,
+  process.env.STOREFRONT_URL ?? (isProduction ? undefined : "http://localhost:3000"),
+  process.env.BACKOFFICE_URL ?? (isProduction ? undefined : "http://localhost:3001"),
 ].filter((origin): origin is string => Boolean(origin));
 
 export const auth = betterAuth({
   appName: "Mandy's",
-  baseURL: process.env.BETTER_AUTH_URL,
-  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL ?? (isProduction ? undefined : "http://localhost:4000"),
+  secret: authSecret,
   database: drizzleAdapter(db, {
     provider: "pg",
   }),
@@ -33,7 +42,7 @@ export const auth = betterAuth({
   ],
   advanced: {
     cookiePrefix: "mandys",
-    useSecureCookies: process.env.NODE_ENV === "production",
+    useSecureCookies: isProduction,
   },
 });
 
