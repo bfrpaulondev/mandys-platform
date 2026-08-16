@@ -1,7 +1,8 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import * as schema from "./schema";
+import { betterAuthSchema } from "./auth-schema";
+import * as businessSchema from "./schema";
 
 const isProduction = process.env.NODE_ENV === "production";
 const databaseUrl =
@@ -23,11 +24,20 @@ export const sql =
     idle_timeout: 20,
     connect_timeout: 10,
     prepare: false,
+    connection: {
+      application_name: "mandys-platform",
+      search_path: "mandys,public",
+    },
   });
 
 if (!isProduction) {
   globalForDatabase.mandysSql = sql;
 }
+
+const schema = {
+  ...businessSchema,
+  ...betterAuthSchema,
+};
 
 export const db = drizzle(sql, { schema });
 export type Database = typeof db;
