@@ -8,6 +8,9 @@ const forbiddenPatterns = [
   { name: "database connection URI", pattern: /postgres(?:ql)?:\/\/[^\s"'`]+:[^\s"'`]+@/i },
   { name: "Supabase service role assignment", pattern: /SUPABASE_SERVICE_ROLE_KEY\s*=\s*["'`][^"'`]+/i },
   { name: "OpenAI secret assignment", pattern: /OPENAI_API_KEY\s*=\s*["'`][^"'`]+/i },
+  { name: "Cloudinary secret assignment", pattern: /CLOUDINARY_API_SECRET\s*=\s*["'`][^"'`]+/i },
+  { name: "Stripe secret assignment", pattern: /STRIPE_SECRET_KEY\s*=\s*["'`][^"'`]+/i },
+  { name: "Resend secret assignment", pattern: /RESEND_API_KEY\s*=\s*["'`][^"'`]+/i },
 ];
 
 async function directories(directory) {

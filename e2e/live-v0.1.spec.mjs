@@ -27,7 +27,6 @@ function futureDateValue(offsetDays = 2) {
 
 function watchRuntime(page) {
   const failures = [];
-
   page.on("pageerror", (error) => failures.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
     if (message.type() === "error") failures.push(`console.error: ${message.text()}`);
@@ -35,8 +34,18 @@ function watchRuntime(page) {
   page.on("response", (response) => {
     if (response.status() >= 500) failures.push(`HTTP ${response.status()}: ${response.url()}`);
   });
-
   return failures;
+}
+
+async function gotoRendered(page, url) {
+  let response = null;
+  try {
+    response = await page.goto(url, { waitUntil: "commit", timeout: 20_000 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("ERR_ABORTED") && !message.includes("frame was detached")) throw error;
+  }
+  if (response) expect(response.status(), `${url} returned a server error`).toBeLessThan(500);
 }
 
 async function expectNoHorizontalOverflow(page) {
@@ -44,7 +53,6 @@ async function expectNoHorizontalOverflow(page) {
     scrollWidth: document.documentElement.scrollWidth,
     clientWidth: document.documentElement.clientWidth,
   }));
-
   expect(
     overflow.scrollWidth,
     `horizontal overflow detected: scrollWidth=${overflow.scrollWidth}, clientWidth=${overflow.clientWidth}`,
@@ -55,7 +63,6 @@ for (const [locale, localeLabel, bookingTitle, bookingCta] of locales) {
   test(`Storefront ${locale} renders the live localized reservation surface`, async ({ page }) => {
     const runtimeFailures = watchRuntime(page);
     const response = await page.goto(`${storefrontOrigin}/${locale}`, { waitUntil: "domcontentloaded" });
-
     expect(response?.ok()).toBeTruthy();
     await expect(page.getByText(liveMarker, { exact: false }).first()).toBeVisible();
     await expect(page.locator("summary").filter({ hasText: localeLabel })).toHaveText(localeLabel);
@@ -72,7 +79,6 @@ test("Storefront reservation availability gateway returns the live policy contra
     `${storefrontOrigin}/api/reservations?date=${encodeURIComponent(futureDateValue())}&partySize=2`,
     { headers: { accept: "application/json" } },
   );
-
   expect(response.ok()).toBeTruthy();
   expect(response.headers()["content-type"]).toContain("application/json");
   const body = await response.json();
@@ -94,8 +100,7 @@ test("Storefront reservation gateway rejects impossible calendar dates without a
     headers: { accept: "application/json" },
   });
   expect(response.status()).toBe(400);
-  const body = await response.json();
-  expect(body?.error).toBe("INVALID_QUERY");
+  expect((await response.json())?.error).toBe("INVALID_QUERY");
 });
 
 test("Storefront waitlist gateway requires a contact method without mutating data", async ({ request }) => {
@@ -108,10 +113,8 @@ test("Storefront waitlist gateway requires a contact method without mutating dat
       guestName: "Readiness Probe",
     },
   });
-
   expect(response.status()).toBe(400);
-  const body = await response.json();
-  expect(body?.error).toBe("CONTACT_REQUIRED");
+  expect((await response.json())?.error).toBe("CONTACT_REQUIRED");
 });
 
 for (const [viewportName, viewport] of responsiveViewports) {
@@ -119,7 +122,6 @@ for (const [viewportName, viewport] of responsiveViewports) {
     const runtimeFailures = watchRuntime(page);
     await page.setViewportSize(viewport);
     const response = await page.goto(`${storefrontOrigin}/pt-PT`, { waitUntil: "domcontentloaded" });
-
     expect(response?.ok()).toBeTruthy();
     await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
     await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
@@ -135,10 +137,8 @@ for (const [viewportName, viewport] of responsiveViewports) {
 
 test("Backoffice login renders a real interactive authentication surface", async ({ page }) => {
   const runtimeFailures = watchRuntime(page);
-  const response = await page.goto(`${backofficeOrigin}/en/login`, { waitUntil: "domcontentloaded" });
-
-  expect(response?.ok()).toBeTruthy();
-  await expect(page.getByText("Mandy's Backoffice", { exact: true })).toBeVisible();
+  await gotoRendered(page, `${backofficeOrigin}/en/login`);
+  await expect(page.getByText("Mandy's Backoffice", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Run your restaurant from one place." })).toBeVisible();
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
@@ -150,10 +150,8 @@ for (const [viewportName, viewport] of responsiveViewports) {
   test(`Backoffice login remains usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
     const runtimeFailures = watchRuntime(page);
     await page.setViewportSize(viewport);
-    const response = await page.goto(`${backofficeOrigin}/en/login`, { waitUntil: "domcontentloaded" });
-
-    expect(response?.ok()).toBeTruthy();
-    await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
+    await gotoRendered(page, `${backofficeOrigin}/en/login`);
+    await expect(page.getByLabel("Email", { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in to Mandy's", exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);

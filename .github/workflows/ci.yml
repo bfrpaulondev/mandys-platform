@@ -35,6 +35,8 @@ jobs:
         run: pnpm typecheck
       - name: Validate Supabase Edge Functions
         run: pnpm check:edge-functions
+      - name: Validate commercial pricing guardrails
+        run: pnpm check:commercial-pricing
       - name: Unit tests
         run: pnpm test
       - name: Build
