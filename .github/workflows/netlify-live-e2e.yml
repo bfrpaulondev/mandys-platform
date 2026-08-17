@@ -1,0 +1,25 @@
+name: Netlify Live E2E
+
+on:
+  push:
+    branches:
+      - fix/netlify-storefront-host
+  workflow_dispatch:
+
+jobs:
+  live-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install Playwright
+        run: |
+          npm install --no-save @playwright/test@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Run live browser tests
+        run: npx playwright test .github/e2e/netlify-live.spec.ts --project=chromium --reporter=line
+        env:
+          CI: true
