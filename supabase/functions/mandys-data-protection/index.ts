@@ -93,6 +93,14 @@ async function exportTenant(ctx: Context): Promise<Result> {
     const stockMovements = await tx<any[]>`select * from mandys.stock_movements where organization_id=${ctx.organizationId}`;
     const notifications = await tx<any[]>`select * from mandys.notifications where organization_id=${ctx.organizationId}`;
     const notificationReceipts = await tx<any[]>`select * from mandys.notification_receipts where organization_id=${ctx.organizationId}`;
+    const transactionalEmails = await tx<any[]>`
+      select id,organization_id,event_key,entity_type,entity_id,template_key,locale,
+             recipient_email,reply_to_email,payload,idempotency_key,status,attempts,max_attempts,
+             available_at,locked_at,sent_at,provider,provider_message_id,last_error_code,created_at,updated_at
+      from mandys.transactional_email_outbox
+      where organization_id=${ctx.organizationId}
+      order by created_at
+    `;
     const auditLogs = await tx<any[]>`select id,organization_id,actor_user_id,action,entity_type,entity_id,request_id,metadata,created_at from mandys.audit_logs where organization_id=${ctx.organizationId} order by created_at`;
     const subscription = (await tx<any[]>`select id,organization_id,plan_key,status,trial_started_at,trial_ends_at,current_period_started_at,current_period_ends_at,cancel_at_period_end,provider,created_at,updated_at from mandys.tenant_subscriptions where organization_id=${ctx.organizationId} limit 1`)[0] ?? null;
     const subscriptionEvents = await tx<any[]>`select id,organization_id,event_type,provider,metadata,created_at from mandys.subscription_events where organization_id=${ctx.organizationId} order by created_at`;
@@ -108,7 +116,7 @@ async function exportTenant(ctx: Context): Promise<Result> {
       events: eventLeads,
       orders: { orders, items: orderItems },
       stock: { ingredients, suppliers, recipes, recipeIngredients, movements: stockMovements },
-      notifications: { notifications, receipts: notificationReceipts },
+      notifications: { notifications, receipts: notificationReceipts, transactionalEmails },
       auditLogs,
       subscription: { current: subscription, events: subscriptionEvents },
     };
@@ -125,6 +133,7 @@ async function deleteTenant(ctx: Context, request: Request): Promise<Result> {
   await sql.begin(async tx => {
     await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;
     await tx`select id from mandys.organization where id=${ctx.organizationId} for update`;
+    await tx`delete from mandys.transactional_email_outbox where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.notification_receipts where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.notifications where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.order_items where organization_id=${ctx.organizationId}`;
