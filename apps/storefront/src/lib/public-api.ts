@@ -16,21 +16,22 @@ export function getPublicApiUrl(): string {
   ).replace(/\/$/, "");
 }
 
+function isHostedDemoHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".vercel.app") ||
+    hostname.endsWith(".netlify.app")
+  );
+}
+
 export function resolveStorefrontHostname(host: string | null): string | null {
   const configured = normalizeStorefrontHost(process.env.MANDYS_STOREFRONT_HOSTNAME ?? null);
-  if (configured) return configured;
+  if (configured) {
+    return isHostedDemoHostname(configured) ? DEMO_HOSTNAME : configured;
+  }
 
   const normalized = normalizeStorefrontHost(host);
   if (!normalized) return null;
-
-  if (
-    normalized === "localhost" ||
-    normalized === "127.0.0.1" ||
-    normalized.endsWith(".vercel.app") ||
-    normalized.endsWith(".netlify.app")
-  ) {
-    return DEMO_HOSTNAME;
-  }
-
-  return normalized;
+  return isHostedDemoHostname(normalized) ? DEMO_HOSTNAME : normalized;
 }
