@@ -49,3 +49,34 @@ jobs:
 
       - name: Dependency audit
         run: pnpm audit --audit-level high
+
+  live-readiness:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify current Netlify targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            echo "Live readiness attempt ${attempt}/12"
+            if node scripts/verify-v0.1-deployments.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              break
+            fi
+            sleep 30
+          done
+          echo "Netlify targets did not reach V0.1 smoke readiness after deployment grace period." >&2
+          exit 1
