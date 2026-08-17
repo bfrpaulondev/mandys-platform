@@ -12,7 +12,6 @@ const [authSource, teamSource] = await Promise.all([
 ]);
 
 const authFile = ts.createSourceFile(authPath, authSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-const teamFile = ts.createSourceFile(teamPath, teamSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
 const full = {
   restaurant: ["read", "update"],
@@ -132,16 +131,9 @@ for (const role of ["owner", "manager", "reception", "kitchen", "staff", "market
   }
 }
 
-const assignable = variableInitializer(teamFile, "assignableRoles");
-let assignableArray = assignable;
-if (ts.isAsExpression(assignable)) assignableArray = assignable.expression;
-if (!ts.isArrayLiteralExpression(assignableArray)) {
-  throw new Error("assignableRoles must remain a literal array");
-}
-const uiRoles = assignableArray.elements.map((element) => {
-  if (!ts.isStringLiteral(element)) throw new Error("assignableRoles contains a non-string role");
-  return element.text;
-});
+const assignableMatch = teamSource.match(/const\s+assignableRoles\s*=\s*\[([^\]]+)\]\s*as\s+const\s*;/s);
+if (!assignableMatch) throw new Error("assignableRoles must remain a literal array declared as const");
+const uiRoles = [...assignableMatch[1].matchAll(/["']([^"']+)["']/g)].map((match) => match[1]);
 const expectedUiRoles = ["manager", "reception", "kitchen", "staff", "marketing", "accounting"];
 if (JSON.stringify(uiRoles) !== JSON.stringify(expectedUiRoles)) {
   throw new Error(`Team UI roles changed. Expected ${expectedUiRoles.join(", ")}; got ${uiRoles.join(", ")}`);
