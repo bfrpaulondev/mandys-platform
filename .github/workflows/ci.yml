@@ -19,37 +19,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Install pnpm
         uses: pnpm/action-setup@v6
         with:
           run_install: false
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Lint
         run: pnpm lint
-
       - name: Typecheck
         run: pnpm typecheck
-
       - name: Validate Supabase Edge Functions
         run: pnpm check:edge-functions
-
       - name: Unit tests
         run: pnpm test
-
       - name: Build
         run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
-
       - name: Dependency audit
         run: pnpm audit --audit-level high
 
@@ -61,12 +52,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-
       - name: Verify current Netlify targets
         shell: bash
         run: |
@@ -88,31 +77,27 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: live-readiness
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
-
       - name: Prepare Playwright runtime
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p playwright-runtime
-          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs playwright-runtime/
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/authenticated-v0.1.spec.mjs playwright-runtime/
           cd playwright-runtime
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.62.1
           npx playwright install --with-deps chromium
-
       - name: Run live browser E2E
         working-directory: playwright-runtime
-        run: npx playwright test live-v0.1.spec.mjs --config=playwright.config.mjs
-
+        run: npx playwright test live-v0.1.spec.mjs authenticated-v0.1.spec.mjs --config=playwright.config.mjs
       - name: Upload browser test artifacts
         if: always()
         uses: actions/upload-artifact@v7
