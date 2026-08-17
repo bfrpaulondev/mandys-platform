@@ -17,17 +17,42 @@ async function proxy(request: Request, context: RouteContext) {
   }
   headers.set("origin", TRUSTED_GATEWAY_ORIGIN);
   headers.set("x-mandys-gateway", "backoffice");
-  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.arrayBuffer();
+
+  const init: RequestInit = {
+    method: request.method,
+    headers,
+    redirect: "manual",
+    cache: "no-store",
+  };
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    init.body = await request.arrayBuffer();
+  }
+
   try {
-    const upstream = await fetch(targetUrl, { method: request.method, headers, body, redirect: "manual", cache: "no-store" });
+    const upstream = await fetch(targetUrl, init);
     const responseHeaders = new Headers(upstream.headers);
     responseHeaders.delete("content-length");
     responseHeaders.delete("content-encoding");
-    return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers: responseHeaders });
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders,
+    });
   } catch {
-    return Response.json({ error: "DATA_PROTECTION_RUNTIME_UNAVAILABLE", message: "Mandy's data-protection runtime is temporarily unavailable" }, { status: 503 });
+    return Response.json(
+      {
+        error: "DATA_PROTECTION_RUNTIME_UNAVAILABLE",
+        message: "Mandy's data-protection runtime is temporarily unavailable",
+      },
+      { status: 503 },
+    );
   }
 }
 
-export async function GET(request: Request, context: RouteContext) { return proxy(request, context); }
-export async function DELETE(request: Request, context: RouteContext) { return proxy(request, context); }
+export async function GET(request: Request, context: RouteContext) {
+  return proxy(request, context);
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  return proxy(request, context);
+}
