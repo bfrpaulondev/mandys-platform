@@ -17,10 +17,56 @@ const storefrontLocales = [
   ["es", "Español", "Reserva directamente", "Reservar mesa"],
 ];
 
+const transientStatuses = new Set([408, 429, 502, 503, 504]);
+const maxAttempts = 3;
+const requestTimeoutMs = 15_000;
+
 function futureDateValue(offsetDays = 1) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offsetDays);
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTransientRetry(target) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+
+    try {
+      const response = await fetch(target.url, {
+        redirect: "follow",
+        signal: controller.signal,
+        headers: { "user-agent": "mandys-v0.1-readiness-check/1.6" },
+      });
+
+      if (!transientStatuses.has(response.status) || attempt === maxAttempts) {
+        return { response, attempt };
+      }
+
+      await response.body?.cancel();
+      console.warn(
+        `RETRY ${target.name}: HTTP ${response.status} on attempt ${attempt}/${maxAttempts}`,
+      );
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) throw error;
+      console.warn(
+        `RETRY ${target.name}: ${error instanceof Error ? error.message : String(error)} on attempt ${attempt}/${maxAttempts}`,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    await sleep(500 * attempt);
+  }
+
+  throw lastError ?? new Error(`Unable to fetch ${target.url}`);
 }
 
 const reservationProbeDate =
@@ -89,15 +135,8 @@ const targets = [
 const failures = [];
 
 for (const target of targets) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-
   try {
-    const response = await fetch(target.url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { "user-agent": "mandys-v0.1-readiness-check/1.5" },
-    });
+    const { response, attempt } = await fetchWithTransientRetry(target);
     const body = await response.text();
     const normalizedBody = body.toLocaleLowerCase();
     const contentType = response.headers.get("content-type") ?? "";
@@ -116,6 +155,7 @@ for (const target of targets) {
         name: target.name,
         status: response.status,
         finalUrl: response.url,
+        attempts: attempt,
         missing,
         forbidden,
         ...(contentTypeMismatch
@@ -126,17 +166,18 @@ for (const target of targets) {
       continue;
     }
 
-    console.log(`PASS ${target.name}: ${response.status} ${response.url}`);
+    console.log(
+      `PASS ${target.name}: ${response.status} ${response.url}${attempt > 1 ? ` after ${attempt} attempts` : ""}`,
+    );
   } catch (error) {
     failures.push({
       name: target.name,
+      attempts: maxAttempts,
       error: error instanceof Error ? error.message : String(error),
     });
     console.error(
       `FAIL ${target.name}: ${error instanceof Error ? error.message : String(error)}`,
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
