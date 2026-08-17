@@ -198,7 +198,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ loc
       <section id="booking" className="scroll-mt-6 border-t border-[var(--mandys-border)]">
         <div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 sm:px-8 lg:grid-cols-[0.75fr_1.25fr] lg:py-20">
           <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mandys-accent)]">Mandy&apos;s Reserve</p><h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em]">{c.bookingTitle}</h2><p className="mt-4 max-w-lg text-sm leading-6 text-[var(--mandys-foreground-muted)]">{c.bookingText}</p></div>
-          <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-5 shadow-[var(--mandys-shadow-sm)] sm:p-7"><ReservationForm locale={locale} disabled={data.isDemo} /></div>
+          <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-5 shadow-[var(--mandys-shadow-sm)] sm:p-7"><ReservationForm locale={locale} disabled={data.isDemo} restaurantTimezone={data.timezone} /></div>
         </div>
       </section>
 
