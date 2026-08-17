@@ -63,6 +63,37 @@ export async function createPublicReservation(input: PublicReservationInput) {
 
     if (!location) throw new PublicReservationUnavailableError();
 
+    const identityMatch = input.guestEmail
+      ? eq(reservations.guestEmail, input.guestEmail)
+      : input.guestPhone
+        ? eq(reservations.guestPhone, input.guestPhone)
+        : eq(reservations.guestName, input.guestName);
+
+    const [existing] = await tx
+      .select({
+        id: reservations.id,
+        startsAt: reservations.startsAt,
+        endsAt: reservations.endsAt,
+        partySize: reservations.partySize,
+        status: reservations.status,
+      })
+      .from(reservations)
+      .where(
+        and(
+          eq(reservations.organizationId, domain.organizationId),
+          eq(reservations.locationId, location.id),
+          eq(reservations.startsAt, input.startsAt),
+          eq(reservations.partySize, input.partySize),
+          eq(reservations.guestName, input.guestName),
+          eq(reservations.source, "storefront"),
+          identityMatch,
+        ),
+      )
+      .orderBy(reservations.createdAt)
+      .limit(1);
+
+    if (existing) return existing;
+
     const [created] = await tx
       .insert(reservations)
       .values({
