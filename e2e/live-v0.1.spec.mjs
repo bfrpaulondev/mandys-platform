@@ -59,6 +59,35 @@ async function expectNoHorizontalOverflow(page) {
   ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 }
 
+async function expectReservationAvailabilitySettled(page) {
+  const timeSelect = page.getByTestId("reservation-starts-at");
+  await expect(timeSelect).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        const placeholder = await timeSelect.locator("option").first().textContent();
+        return placeholder?.trim() ?? "";
+      },
+      { timeout: 15_000 },
+    )
+    .not.toMatch(/A procurar horários|Buscando horários|Finding available times|Buscando horarios/i);
+
+  const optionCount = await timeSelect.locator("option").count();
+  if (optionCount > 1) {
+    await expect(timeSelect).toBeEnabled();
+    await timeSelect.selectOption({ index: 1 });
+    await expect(page.getByTestId("reservation-submit")).toBeEnabled();
+    return;
+  }
+
+  await expect(timeSelect).toBeDisabled();
+  await expect(
+    page
+      .getByTestId("storefront-reservation-form")
+      .getByText(/Não existem horários|Não há horários|There are no available times|No hay horarios/i),
+  ).toBeVisible();
+}
+
 for (const [locale, localeLabel, bookingTitle, bookingCta] of locales) {
   test(`Storefront ${locale} renders the live localized reservation surface`, async ({ page }) => {
     const runtimeFailures = watchRuntime(page);
@@ -130,6 +159,7 @@ for (const [viewportName, viewport] of responsiveViewports) {
     await expect(page.getByTestId("reservation-date")).toBeVisible();
     await expect(page.getByTestId("reservation-starts-at")).toBeVisible();
     await expect(page.getByTestId("reservation-submit")).toBeVisible();
+    await expectReservationAvailabilitySettled(page);
     await expectNoHorizontalOverflow(page);
     expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
   });
