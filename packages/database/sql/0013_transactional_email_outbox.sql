@@ -2,6 +2,11 @@
 -- fail-closed; inserting a row never sends email by itself.
 set search_path to mandys, public;
 
+-- A tenant must explicitly opt in before events are even enqueued. This avoids
+-- building a stale backlog while the external provider is still disabled.
+alter table mandys.tenant_settings
+  add column if not exists transactional_email_enabled boolean not null default false;
+
 create table if not exists mandys.transactional_email_outbox (
   id uuid primary key default gen_random_uuid(),
   organization_id text not null references mandys.organization(id) on delete cascade,
@@ -105,6 +110,7 @@ declare
   v_recipient text;
   v_locale mandys.locale_code;
   v_timezone text := 'Europe/Lisbon';
+  v_email_enabled boolean := false;
   v_template text;
   v_payload jsonb := '{}'::jsonb;
   v_reply_to text;
@@ -113,10 +119,11 @@ declare
 begin
   select ts.default_locale,
          ts.timezone,
+         ts.transactional_email_enabled,
          rp.public_name,
          coalesce(l.name,'') as location_name,
          coalesce(l.email,rp.contact_email)
-    into v_locale,v_timezone,v_public_name,v_location_name,v_reply_to
+    into v_locale,v_timezone,v_email_enabled,v_public_name,v_location_name,v_reply_to
   from mandys.tenant_settings ts
   left join mandys.restaurant_profiles rp on rp.organization_id=ts.organization_id
   left join mandys.locations l on l.organization_id=ts.organization_id
@@ -124,6 +131,10 @@ begin
   where ts.organization_id=new.organization_id
   order by l.created_at asc nulls last
   limit 1;
+
+  if not coalesce(v_email_enabled,false) then
+    return new;
+  end if;
 
   if new.action = 'reservation.public_created' and new.entity_id is not null then
     select coalesce(r.guest_email,c.email),coalesce(c.preferred_locale,v_locale),
