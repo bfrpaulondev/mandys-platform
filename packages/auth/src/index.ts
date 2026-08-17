@@ -7,9 +7,11 @@ import {
   authUser,
   authVerification,
   db,
+  sql,
 } from "@mandys/database";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError } from "better-auth/api";
 import { organization } from "better-auth/plugins";
 
 import { ac, mandysRoles } from "./permissions";
@@ -47,6 +49,21 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  user: {
+    deleteUser: {
+      enabled: true,
+      beforeDelete: async (user) => {
+        const memberships = await sql<{ count: number }[]>`
+          select count(*)::int as count from mandys.member where user_id=${user.id}
+        `;
+        if ((memberships[0]?.count ?? 0) > 0) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Leave or delete every Mandy's restaurant organization before deleting the user account",
+          });
+        }
+      },
+    },
+  },
   trustedOrigins,
   plugins: [
     organization({
@@ -56,6 +73,10 @@ export const auth = betterAuth({
       allowUserToCreateOrganization: true,
       organizationLimit: 10,
       membershipLimit: 100,
+      // Business data is tenant-scoped outside the Better Auth organization
+      // tables. Deletion therefore goes through Mandy's atomic data-protection
+      // runtime instead of Better Auth's generic organization.delete endpoint.
+      disableOrganizationDeletion: true,
     }),
   ],
   advanced: {
