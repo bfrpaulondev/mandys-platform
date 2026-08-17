@@ -43,6 +43,7 @@ jobs:
         run: pnpm build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+          MANDYS_STOREFRONT_HOSTNAME: "demo.mandys.local"
       - name: Dependency audit
         run: pnpm audit --audit-level high
 
