@@ -18,7 +18,6 @@ type Context = { userId: string; organizationId: string; role: string };
 type Result = { status?: number; body: unknown };
 type Slot = { startsAt: string; endsAt: string; available: boolean; remainingCapacity: number };
 
-const activeStatuses = ["pending", "confirmed", "seated"];
 const transitions: Record<string, string[]> = {
   pending: ["confirmed", "cancelled"],
   confirmed: ["seated", "cancelled", "no_show"],
@@ -84,9 +83,7 @@ async function context(request: Request): Promise<Context | Result> {
     return fail(401, "TENANT_CONTEXT_REQUIRED", "Select an active restaurant organization");
   }
   const members = await sql<{ role: string }[]>`
-    select role from mandys.member
-    where organization_id = ${organizationId} and user_id = ${userId}
-    limit 1
+    select role from mandys.member where organization_id = ${organizationId} and user_id = ${userId} limit 1
   `;
   const role = members[0]?.role;
   if (!role) return fail(403, "FORBIDDEN", "Organization membership is required");
@@ -104,8 +101,7 @@ function canWrite(ctx: Context) {
 async function assertEnabled(tx: any, ctx: Context) {
   const rows = await tx<any[]>`
     select status from mandys.module_entitlements
-    where organization_id = ${ctx.organizationId} and module_key = 'reservations'
-    limit 1
+    where organization_id = ${ctx.organizationId} and module_key = 'reservations' limit 1
   `;
   if (!rows[0] || rows[0].status === "disabled") throw new Error("RESERVATIONS_DISABLED");
 }
@@ -121,46 +117,39 @@ async function getConfig(tx: any, ctx: Context, locationId?: string | null) {
   const locationRows = locationId
     ? await tx<any[]>`
         select id, name from mandys.locations
-        where organization_id = ${ctx.organizationId} and id = ${locationId}::uuid and is_active = true
-        limit 1
+        where organization_id = ${ctx.organizationId} and id = ${locationId}::uuid and is_active = true limit 1
       `
     : await tx<any[]>`
         select id, name from mandys.locations
-        where organization_id = ${ctx.organizationId} and is_active = true
-        order by created_at asc limit 1
+        where organization_id = ${ctx.organizationId} and is_active = true order by created_at asc limit 1
       `;
   const location = locationRows[0];
   if (!location) return null;
-
   const [settingsRows, profileRows] = await Promise.all([
     tx<any[]>`select timezone from mandys.tenant_settings where organization_id = ${ctx.organizationId} limit 1`,
     tx<any[]>`
       select reservation_duration_minutes from mandys.restaurant_profiles
-      where organization_id = ${ctx.organizationId} and location_id = ${location.id}::uuid
-      limit 1
+      where organization_id = ${ctx.organizationId} and location_id = ${location.id}::uuid limit 1
     `,
   ]);
-  const timezone = settingsRows[0]?.timezone ?? "Europe/Lisbon";
-  const durationMinutes = Math.max(30, Math.min(360, Number(profileRows[0]?.reservation_duration_minutes ?? 90)));
-  return { locationId: location.id as string, locationName: location.name as string, timezone, durationMinutes };
+  return {
+    locationId: location.id as string,
+    locationName: location.name as string,
+    timezone: settingsRows[0]?.timezone ?? "Europe/Lisbon",
+    durationMinutes: Math.max(30, Math.min(360, Number(profileRows[0]?.reservation_duration_minutes ?? 90))),
+  };
 }
 
 async function openingBounds(tx: any, organizationId: string, locationId: string, timezone: string, localDate: string) {
   const rows = await tx<any[]>`
-    with day_info as (
-      select extract(dow from ${localDate}::date)::int as weekday
-    ), hours as (
+    with day_info as (select extract(dow from ${localDate}::date)::int as weekday),
+    hours as (
       select oh.opens_at, oh.closes_at, oh.is_closed
       from mandys.opening_hours oh, day_info d
-      where oh.organization_id = ${organizationId}
-        and oh.location_id = ${locationId}::uuid
-        and oh.weekday = d.weekday
+      where oh.organization_id = ${organizationId} and oh.location_id = ${locationId}::uuid and oh.weekday = d.weekday
       limit 1
     )
-    select
-      is_closed,
-      opens_at,
-      closes_at,
+    select is_closed,
       case when is_closed or opens_at is null or closes_at is null then null
         else ((${localDate}::date + opens_at::time) at time zone ${timezone}) end as open_at,
       case when is_closed or opens_at is null or closes_at is null then null
@@ -190,8 +179,7 @@ async function availability(ctx: Context, url: URL): Promise<Result> {
     if (!bounds) return { body: { data: { locationId: cfg.locationId, timezone: cfg.timezone, durationMinutes: cfg.durationMinutes, slots: [] } } };
 
     const tables = await tx<any[]>`
-      select id, min_seats, max_seats
-      from mandys.restaurant_tables
+      select id, min_seats, max_seats from mandys.restaurant_tables
       where organization_id = ${ctx.organizationId} and location_id = ${cfg.locationId}::uuid and is_active = true
       order by max_seats asc, min_seats asc, created_at asc
     `;
@@ -200,36 +188,25 @@ async function availability(ctx: Context, url: URL): Promise<Result> {
     }
 
     const reservations = await tx<any[]>`
-      select table_id, starts_at, ends_at, party_size
-      from mandys.reservations
-      where organization_id = ${ctx.organizationId}
-        and location_id = ${cfg.locationId}::uuid
+      select table_id, starts_at, ends_at, party_size from mandys.reservations
+      where organization_id = ${ctx.organizationId} and location_id = ${cfg.locationId}::uuid
         and status in ('pending','confirmed','seated')
-        and starts_at < ${bounds.closeAt.toISOString()}::timestamptz
-        and ends_at > ${bounds.openAt.toISOString()}::timestamptz
+        and starts_at < ${bounds.closeAt.toISOString()}::timestamptz and ends_at > ${bounds.openAt.toISOString()}::timestamptz
     `;
-
     const totalCapacity = tables.reduce((sum: number, table: any) => sum + Number(table.max_seats), 0);
     const slots: Slot[] = [];
-    const stepMs = 30 * 60_000;
     const durationMs = cfg.durationMinutes * 60_000;
-    for (let at = bounds.openAt.getTime(); at + durationMs <= bounds.closeAt.getTime(); at += stepMs) {
+    for (let at = bounds.openAt.getTime(); at + durationMs <= bounds.closeAt.getTime(); at += 30 * 60_000) {
       const startsAt = new Date(at);
       const endsAt = new Date(at + durationMs);
       if (endsAt.getTime() <= Date.now()) continue;
       const overlapping = reservations.filter((row: any) => new Date(row.starts_at).getTime() < endsAt.getTime() && new Date(row.ends_at).getTime() > startsAt.getTime());
       const reservedCapacity = overlapping.reduce((sum: number, row: any) => sum + Number(row.party_size), 0);
-      const occupiedTableIds = new Set(overlapping.map((row: any) => row.table_id).filter(Boolean));
-      const hasFittingTable = tables.some((table: any) => !occupiedTableIds.has(table.id) && Number(table.max_seats) >= partySize);
+      const occupied = new Set(overlapping.map((row: any) => row.table_id).filter(Boolean));
       const remainingCapacity = Math.max(0, totalCapacity - reservedCapacity);
-      slots.push({
-        startsAt: startsAt.toISOString(),
-        endsAt: endsAt.toISOString(),
-        available: hasFittingTable && remainingCapacity >= partySize,
-        remainingCapacity,
-      });
+      const hasFittingTable = tables.some((table: any) => !occupied.has(table.id) && Number(table.max_seats) >= partySize);
+      slots.push({ startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), available: hasFittingTable && remainingCapacity >= partySize, remainingCapacity });
     }
-
     return { body: { data: { locationId: cfg.locationId, timezone: cfg.timezone, durationMinutes: cfg.durationMinutes, slots } } };
   }).catch(error => String(error).includes("RESERVATIONS_DISABLED")
     ? fail(403, "RESERVATIONS_DISABLED", "The reservations module is not enabled")
@@ -245,7 +222,9 @@ async function list(ctx: Context, url: URL): Promise<Result> {
   if ((locationId && !isUuid(locationId)) || !Number.isInteger(limit)) return fail(400, "INVALID_QUERY", "Reservation filters are invalid");
   const from = fromRaw ? new Date(fromRaw) : null;
   const to = toRaw ? new Date(toRaw) : null;
-  if ((from && !Number.isFinite(from.getTime())) || (to && !Number.isFinite(to.getTime())) || (from && to && to <= from)) return fail(400, "INVALID_QUERY", "Reservation date filters are invalid");
+  if ((from && !Number.isFinite(from.getTime())) || (to && !Number.isFinite(to.getTime())) || (from && to && to <= from)) {
+    return fail(400, "INVALID_QUERY", "Reservation date filters are invalid");
+  }
 
   return sql.begin(async tx => {
     await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
@@ -262,18 +241,32 @@ async function list(ctx: Context, url: URL): Promise<Result> {
         and (${locationId}::text is null or r.location_id = ${locationId}::uuid)
         and (${from ? from.toISOString() : null}::timestamptz is null or r.ends_at > ${from ? from.toISOString() : null}::timestamptz)
         and (${to ? to.toISOString() : null}::timestamptz is null or r.starts_at < ${to ? to.toISOString() : null}::timestamptz)
-      order by r.starts_at asc
-      limit ${limit}
+      order by r.starts_at asc limit ${limit}
     `;
-    return { body: { data: rows.map((row: any) => ({
-      id: row.id, locationId: row.location_id, customerId: row.customer_id,
-      diningAreaId: row.dining_area_id, diningAreaName: row.dining_area_name,
-      tableId: row.table_id, tableName: row.table_name, guestName: row.guest_name,
-      guestEmail: row.guest_email, guestPhone: row.guest_phone,
-      startsAt: new Date(row.starts_at).toISOString(), endsAt: new Date(row.ends_at).toISOString(),
-      partySize: row.party_size, status: row.status, notes: row.notes, source: row.source,
-      createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString(),
-    })) } } };
+    return {
+      body: {
+        data: rows.map((row: any) => ({
+          id: row.id,
+          locationId: row.location_id,
+          customerId: row.customer_id,
+          diningAreaId: row.dining_area_id,
+          diningAreaName: row.dining_area_name,
+          tableId: row.table_id,
+          tableName: row.table_name,
+          guestName: row.guest_name,
+          guestEmail: row.guest_email,
+          guestPhone: row.guest_phone,
+          startsAt: new Date(row.starts_at).toISOString(),
+          endsAt: new Date(row.ends_at).toISOString(),
+          partySize: row.party_size,
+          status: row.status,
+          notes: row.notes,
+          source: row.source,
+          createdAt: new Date(row.created_at).toISOString(),
+          updatedAt: new Date(row.updated_at).toISOString(),
+        })),
+      },
+    };
   }).catch(error => String(error).includes("RESERVATIONS_DISABLED")
     ? fail(403, "RESERVATIONS_DISABLED", "The reservations module is not enabled")
     : Promise.reject(error));
@@ -304,15 +297,13 @@ async function create(ctx: Context, body: any): Promise<Result> {
              extract(minute from ${startsAt.toISOString()}::timestamptz at time zone ${cfg.timezone})::int as minute
     `;
     const localDate = localRows[0]?.local_date as string;
-    const minute = Number(localRows[0]?.minute ?? -1);
-    if (![0, 30].includes(minute)) return fail(422, "INVALID_SLOT", "Reservations must start on a 30-minute slot");
+    if (![0, 30].includes(Number(localRows[0]?.minute ?? -1))) return fail(422, "INVALID_SLOT", "Reservations must start on a 30-minute slot");
     const bounds = await openingBounds(tx, ctx.organizationId, locationId, cfg.timezone, localDate);
     const endsAt = new Date(startsAt.getTime() + cfg.durationMinutes * 60_000);
     if (!bounds || startsAt < bounds.openAt || endsAt > bounds.closeAt) return fail(409, "SLOT_UNAVAILABLE", "The restaurant is closed at the selected time");
 
     const tables = await tx<any[]>`
-      select id, dining_area_id, min_seats, max_seats
-      from mandys.restaurant_tables
+      select id, dining_area_id, min_seats, max_seats from mandys.restaurant_tables
       where organization_id = ${ctx.organizationId} and location_id = ${locationId}::uuid and is_active = true
       order by max_seats asc, created_at asc
     `;
@@ -320,14 +311,13 @@ async function create(ctx: Context, body: any): Promise<Result> {
       select table_id, party_size from mandys.reservations
       where organization_id = ${ctx.organizationId} and location_id = ${locationId}::uuid
         and status in ('pending','confirmed','seated')
-        and starts_at < ${endsAt.toISOString()}::timestamptz
-        and ends_at > ${startsAt.toISOString()}::timestamptz
+        and starts_at < ${endsAt.toISOString()}::timestamptz and ends_at > ${startsAt.toISOString()}::timestamptz
     `;
     const totalCapacity = tables.reduce((sum: number, table: any) => sum + Number(table.max_seats), 0);
     const reservedCapacity = overlapping.reduce((sum: number, row: any) => sum + Number(row.party_size), 0);
     if (totalCapacity === 0 || reservedCapacity + partySize > totalCapacity) return fail(409, "SLOT_UNAVAILABLE", "No capacity is available for this time");
     const occupied = new Set(overlapping.map((row: any) => row.table_id).filter(Boolean));
-    let table = requestedTableId
+    const table = requestedTableId
       ? tables.find((row: any) => row.id === requestedTableId && Number(row.max_seats) >= partySize && !occupied.has(row.id))
       : tables.find((row: any) => Number(row.max_seats) >= partySize && !occupied.has(row.id));
     if (!table) return fail(409, "SLOT_UNAVAILABLE", "No suitable table is available for this time");
@@ -340,7 +330,9 @@ async function create(ctx: Context, body: any): Promise<Result> {
       customerId = existing[0]?.id ?? null;
     }
     if (!customerId) {
-      const parts = guestName.split(/\s+/); const firstName = parts.shift() ?? guestName; const lastName = parts.join(" ") || null;
+      const parts = guestName.split(/\s+/);
+      const firstName = parts.shift() ?? guestName;
+      const lastName = parts.join(" ") || null;
       const createdCustomer = await tx<any[]>`
         insert into mandys.customers (organization_id, first_name, last_name, email, phone)
         values (${ctx.organizationId}, ${firstName}, ${lastName}, ${guestEmail}, ${guestPhone}) returning id
@@ -373,12 +365,18 @@ async function changeStatus(ctx: Context, reservationId: string, body: any): Pro
   return sql.begin(async tx => {
     await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
     await assertEnabled(tx, ctx);
-    const currentRows = await tx<any[]>`select id,status from mandys.reservations where organization_id=${ctx.organizationId} and id=${reservationId}::uuid limit 1`;
+    const currentRows = await tx<any[]>`
+      select id,status from mandys.reservations where organization_id=${ctx.organizationId} and id=${reservationId}::uuid limit 1
+    `;
     const current = currentRows[0];
     if (!current) return fail(404, "NOT_FOUND", "Reservation not found");
     if (current.status === status) return { body: { data: { id: current.id, status } } };
     if (!(transitions[current.status] ?? []).includes(status)) return fail(422, "INVALID_TRANSITION", `Reservation status cannot transition from ${current.status} to ${status}`);
-    const updated = await tx<any[]>`update mandys.reservations set status=${status}::mandys.reservation_status, updated_at=now() where organization_id=${ctx.organizationId} and id=${reservationId}::uuid and status=${current.status}::mandys.reservation_status returning id,status`;
+    const updated = await tx<any[]>`
+      update mandys.reservations set status=${status}::mandys.reservation_status, updated_at=now()
+      where organization_id=${ctx.organizationId} and id=${reservationId}::uuid and status=${current.status}::mandys.reservation_status
+      returning id,status
+    `;
     if (!updated[0]) return fail(409, "CONCURRENT_UPDATE", "Reservation was updated by another request");
     await audit(tx, ctx, "reservation.status_changed", reservationId, { from: current.status, to: status });
     return { body: { data: { id: reservationId, status } } };
