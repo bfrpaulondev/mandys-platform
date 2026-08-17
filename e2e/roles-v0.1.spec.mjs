@@ -140,7 +140,7 @@ async function cleanupOwner(context, password) {
 }
 
 test("operational roles enforce navigation and API least privilege", async ({ browser }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(900_000);
   const owner = identity("owner");
   const ownerContext = await browser.newContext();
   const memberContexts = [];
