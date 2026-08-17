@@ -107,6 +107,22 @@ test("Storefront reservation gateway rejects impossible calendar dates without a
   expect(body?.error).toBe("INVALID_QUERY");
 });
 
+test("Storefront waitlist gateway rejects invalid submissions without mutating data", async ({ request }) => {
+  const response = await request.post(`${storefrontOrigin}/api/reservations/waitlist`, {
+    headers: { accept: "application/json", "content-type": "application/json" },
+    data: {
+      requestedDate: futureDateValue(),
+      partySize: 2,
+      locale: "en",
+      guestName: "",
+    },
+  });
+
+  expect(response.status()).toBe(400);
+  const body = await response.json();
+  expect(body?.error).toBe("INVALID_REQUEST");
+});
+
 for (const [viewportName, viewport] of responsiveViewports) {
   test(`Storefront reservation surface is usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
     const runtimeFailures = watchRuntime(page);
