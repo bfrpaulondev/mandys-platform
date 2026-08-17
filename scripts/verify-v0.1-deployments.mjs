@@ -15,6 +15,15 @@ const storefrontLocales = [
   ["es", "Español"],
 ];
 
+function futureDateValue(offsetDays = 1) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+const reservationProbeDate =
+  process.env.MANDYS_RESERVATION_PROBE_DATE ?? futureDateValue();
+
 const targets = [
   {
     name: "Backoffice login",
@@ -44,6 +53,19 @@ const targets = [
     requiredText: ["Mandy", localeLabel, storefrontLiveMarker],
     forbiddenText: [storefrontFallbackMarker],
   })),
+  {
+    name: "Storefront reservation availability gateway",
+    url: `${storefrontOrigin}/api/reservations?date=${encodeURIComponent(reservationProbeDate)}&partySize=2`,
+    requiredText: [],
+    forbiddenText: [
+      "HOST_UNAVAILABLE",
+      "API_UNAVAILABLE",
+      "UPSTREAM_ERROR",
+      "Restaurant hostname could not be resolved",
+      "Availability service is temporarily unavailable",
+    ],
+    requiredContentType: "application/json",
+  },
 ];
 
 const failures = [];
@@ -56,7 +78,7 @@ for (const target of targets) {
     const response = await fetch(target.url, {
       redirect: "follow",
       signal: controller.signal,
-      headers: { "user-agent": "mandys-v0.1-readiness-check/1.1" },
+      headers: { "user-agent": "mandys-v0.1-readiness-check/1.2" },
     });
     const body = await response.text();
     const normalizedBody = body.toLocaleLowerCase();
@@ -102,5 +124,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nPublic deployment smoke checks passed with a DB-backed Storefront. Browser E2E is still required before V0.1 is declared ready.",
+  "\nPublic deployment smoke checks passed with a DB-backed Storefront and live reservation availability gateway. Browser E2E is still required before V0.1 is declared ready.",
 );
