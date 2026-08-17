@@ -48,7 +48,7 @@ const copy = {
 
 const fieldClassName = "min-h-11 w-full rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] bg-transparent px-3 outline-none focus:ring-2 focus:ring-[var(--mandys-accent)]";
 
-function messageOf(error: { message?: string } | null | undefined, fallback: string): string {
+function messageOf(error: { message?: string | undefined } | null | undefined, fallback: string): string {
   return error?.message ?? fallback;
 }
 
@@ -66,15 +66,7 @@ export function TeamBoard({ locale }: { locale: Locale }) {
 
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "medium" }), [locale]);
   const roleLabel = useCallback((role: string) => {
-    const labels: Record<string, string> = {
-      owner: c.owner,
-      manager: c.manager,
-      reception: c.reception,
-      kitchen: c.kitchen,
-      staff: c.staff,
-      marketing: c.marketing,
-      accounting: c.accounting,
-    };
+    const labels: Record<string, string> = { owner: c.owner, manager: c.manager, reception: c.reception, kitchen: c.kitchen, staff: c.staff, marketing: c.marketing, accounting: c.accounting };
     return labels[role] ?? role;
   }, [c]);
 
@@ -161,9 +153,7 @@ export function TeamBoard({ locale }: { locale: Locale }) {
     } finally { setBusyId(null); }
   }
 
-  if (loading && !organization) {
-    return <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</div>;
-  }
+  if (loading && !organization) return <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</div>;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
@@ -175,18 +165,9 @@ export function TeamBoard({ locale }: { locale: Locale }) {
           <label className="block text-sm font-medium"><span className="mb-1.5 block">{c.role}</span><select name="role" defaultValue="staff" className={fieldClassName}>{assignableRoles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select></label>
           <Button type="submit" className="w-full" disabled={inviting || !organization}>{inviting ? c.sending : c.send}</Button>
         </form>
-
         <div className="mt-8 border-t border-[var(--mandys-border)] pt-5">
           <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{c.pending}</h3><Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>{c.retry}</Button></div>
-          {invitations.length === 0 ? <p className="mt-3 text-sm text-[var(--mandys-foreground-muted)]">{c.noPending}</p> : (
-            <div className="mt-3 space-y-3">{invitations.map((invitation) => (
-              <article key={invitation.id} className="rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] p-3">
-                <p className="truncate text-sm font-medium">{invitation.email}</p>
-                <p className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{roleLabel(invitation.role)} · {dateFormatter.format(new Date(invitation.expiresAt))}</p>
-                <button type="button" disabled={busyId === invitation.id} onClick={() => void cancelInvitation(invitation.id)} className="mt-2 text-xs font-medium text-[var(--mandys-danger)] disabled:opacity-50">{c.cancel}</button>
-              </article>
-            ))}</div>
-          )}
+          {invitations.length === 0 ? <p className="mt-3 text-sm text-[var(--mandys-foreground-muted)]">{c.noPending}</p> : <div className="mt-3 space-y-3">{invitations.map((invitation) => <article key={invitation.id} className="rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] p-3"><p className="truncate text-sm font-medium">{invitation.email}</p><p className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{roleLabel(invitation.role)} · {dateFormatter.format(new Date(invitation.expiresAt))}</p><button type="button" disabled={busyId === invitation.id} onClick={() => void cancelInvitation(invitation.id)} className="mt-2 text-xs font-medium text-[var(--mandys-danger)] disabled:opacity-50">{c.cancel}</button></article>)}</div>}
         </div>
       </aside>
 
@@ -194,21 +175,11 @@ export function TeamBoard({ locale }: { locale: Locale }) {
         <div className="mb-4"><h2 className="text-lg font-semibold">{c.members}</h2><p className="mt-1 text-sm text-[var(--mandys-foreground-muted)]">{c.membersHelp}</p></div>
         {error ? <div className="mb-4 rounded-[var(--mandys-radius-md)] border border-[var(--mandys-danger)]/30 p-4 text-sm text-[var(--mandys-danger)]">{error}</div> : null}
         {notice ? <div className="mb-4 rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] p-4 text-sm">{notice}</div> : null}
-        <div className="space-y-3">
-          {members.map((member) => {
-            const isOwner = member.role === "owner";
-            const isSelf = member.userId === currentUserId;
-            return (
-              <article key={member.id} className="grid gap-4 rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4 md:grid-cols-[1fr_220px_auto] md:items-center">
-                <div className="min-w-0"><p className="truncate font-medium">{member.user?.name || member.user?.email || member.userId}</p><p className="truncate text-sm text-[var(--mandys-foreground-muted)]">{member.user?.email}{isSelf ? ` · ${c.you}` : ""}</p></div>
-                {isOwner ? <div className="text-sm"><strong>{c.owner}</strong><p className="text-xs text-[var(--mandys-foreground-muted)]">{c.ownerLocked}</p></div> : (
-                  <select aria-label={c.role} value={assignableRoles.includes(member.role as AssignableRole) ? member.role : "staff"} disabled={busyId === member.id} onChange={(event) => void updateRole(member, event.target.value as AssignableRole)} className={fieldClassName}>{assignableRoles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
-                )}
-                <div className="flex justify-end">{!isOwner && !isSelf ? <Button variant="secondary" size="sm" disabled={busyId === member.id} onClick={() => void removeMember(member)}>{c.remove}</Button> : null}</div>
-              </article>
-            );
-          })}
-        </div>
+        <div className="space-y-3">{members.map((member) => {
+          const isOwner = member.role === "owner";
+          const isSelf = member.userId === currentUserId;
+          return <article key={member.id} className="grid gap-4 rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4 md:grid-cols-[1fr_220px_auto] md:items-center"><div className="min-w-0"><p className="truncate font-medium">{member.user?.name || member.user?.email || member.userId}</p><p className="truncate text-sm text-[var(--mandys-foreground-muted)]">{member.user?.email}{isSelf ? ` · ${c.you}` : ""}</p></div>{isOwner ? <div className="text-sm"><strong>{c.owner}</strong><p className="text-xs text-[var(--mandys-foreground-muted)]">{c.ownerLocked}</p></div> : <select aria-label={c.role} value={assignableRoles.includes(member.role as AssignableRole) ? member.role : "staff"} disabled={busyId === member.id} onChange={(event) => void updateRole(member, event.target.value as AssignableRole)} className={fieldClassName}>{assignableRoles.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>}<div className="flex justify-end">{!isOwner && !isSelf ? <Button variant="secondary" size="sm" disabled={busyId === member.id} onClick={() => void removeMember(member)}>{c.remove}</Button> : null}</div></article>;
+        })}</div>
       </section>
     </div>
   );
