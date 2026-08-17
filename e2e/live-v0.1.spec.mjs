@@ -132,6 +132,16 @@ test("Storefront reservation gateway rejects impossible calendar dates without a
   expect((await response.json())?.error).toBe("INVALID_QUERY");
 });
 
+test("Storefront reservation write gateway rejects malformed JSON without mutating data", async ({ request }) => {
+  const response = await request.post(`${storefrontOrigin}/api/reservations`, {
+    headers: { accept: "application/json", "content-type": "application/json" },
+    data: "{",
+  });
+  expect(response.status()).toBe(400);
+  expect(response.headers()["content-type"]).toContain("application/json");
+  expect((await response.json())?.error).toBe("INVALID_REQUEST");
+});
+
 test("Storefront waitlist gateway requires a contact method without mutating data", async ({ request }) => {
   const response = await request.post(`${storefrontOrigin}/api/reservations/waitlist`, {
     headers: { accept: "application/json", "content-type": "application/json" },
