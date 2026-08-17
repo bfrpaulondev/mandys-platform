@@ -4,6 +4,16 @@ const backofficeOrigin =
   process.env.MANDYS_BACKOFFICE_ORIGIN ?? "https://mandyplataform.netlify.app";
 const storefrontOrigin =
   process.env.MANDYS_STOREFRONT_ORIGIN ?? "https://mandy-store-front.netlify.app";
+const storefrontLiveMarker =
+  process.env.MANDYS_STOREFRONT_LIVE_MARKER ?? "Maré · Setúbal";
+const storefrontFallbackMarker = "Maré · Demonstração Mandy's";
+
+const storefrontLocales = [
+  ["pt-PT", "Português (Portugal)"],
+  ["pt-BR", "Português (Brasil)"],
+  ["en", "English"],
+  ["es", "Español"],
+];
 
 const targets = [
   {
@@ -28,10 +38,11 @@ const targets = [
     requiredText: ["Mandy", "standalone"],
     requiredContentType: "application/manifest+json",
   },
-  ...["pt-PT", "pt-BR", "en", "es"].map((locale) => ({
+  ...storefrontLocales.map(([locale, localeLabel]) => ({
     name: `Storefront ${locale}`,
     url: `${storefrontOrigin}/${locale}`,
-    requiredText: ["Mandy"],
+    requiredText: ["Mandy", localeLabel, storefrontLiveMarker],
+    forbiddenText: [storefrontFallbackMarker],
   })),
 ];
 
@@ -45,23 +56,28 @@ for (const target of targets) {
     const response = await fetch(target.url, {
       redirect: "follow",
       signal: controller.signal,
-      headers: { "user-agent": "mandys-v0.1-readiness-check/1.0" },
+      headers: { "user-agent": "mandys-v0.1-readiness-check/1.1" },
     });
     const body = await response.text();
+    const normalizedBody = body.toLocaleLowerCase();
     const contentType = response.headers.get("content-type") ?? "";
     const missing = target.requiredText.filter(
-      (text) => !body.toLocaleLowerCase().includes(text.toLocaleLowerCase()),
+      (text) => !normalizedBody.includes(text.toLocaleLowerCase()),
+    );
+    const forbidden = (target.forbiddenText ?? []).filter((text) =>
+      normalizedBody.includes(text.toLocaleLowerCase()),
     );
     const contentTypeMismatch =
       target.requiredContentType !== undefined &&
       !contentType.toLocaleLowerCase().includes(target.requiredContentType.toLocaleLowerCase());
 
-    if (!response.ok || missing.length > 0 || contentTypeMismatch) {
+    if (!response.ok || missing.length > 0 || forbidden.length > 0 || contentTypeMismatch) {
       failures.push({
         name: target.name,
         status: response.status,
         finalUrl: response.url,
         missing,
+        forbidden,
         ...(contentTypeMismatch
           ? { expectedContentType: target.requiredContentType, actualContentType: contentType }
           : {}),
@@ -85,4 +101,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("\nPublic deployment smoke checks passed. Browser E2E is still required before V0.1 is declared ready.");
+console.log(
+  "\nPublic deployment smoke checks passed with a DB-backed Storefront. Browser E2E is still required before V0.1 is declared ready.",
+);
