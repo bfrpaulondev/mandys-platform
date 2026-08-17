@@ -14,7 +14,7 @@
   "dependencies": {
     "@fastify/cors": "^11.0.0",
     "@fastify/helmet": "^13.0.0",
-    "@fastify/rate-limit": "^10.0.0",
+    "@fastify/rate-limit": "^11.2.0",
     "@mandys/auth": "workspace:*",
     "@mandys/contracts": "workspace:*",
     "@mandys/database": "workspace:*",

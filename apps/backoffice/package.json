@@ -22,9 +22,9 @@
     "@mandys/theme-minimal": "workspace:*",
     "@mandys/ui": "workspace:*",
     "better-auth": "^1.6.0",
-    "next": "16.2.12",
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@mandys/tsconfig": "workspace:*",
