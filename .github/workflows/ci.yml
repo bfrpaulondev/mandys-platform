@@ -39,6 +39,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Validate Supabase Edge Functions
+        run: pnpm check:edge-functions
+
       - name: Unit tests
         run: pnpm test
 
