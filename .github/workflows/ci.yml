@@ -66,15 +66,16 @@ jobs:
           for attempt in {1..12}; do
             echo "Live readiness attempt ${attempt}/12"
             if node scripts/verify-v0.1-deployments.mjs; then
-              exit 0
+              break
             fi
             if [ "$attempt" -eq 12 ]; then
-              break
+              echo "Netlify targets did not reach V0.1 smoke readiness after deployment grace period." >&2
+              exit 1
             fi
             sleep 30
           done
-          echo "Netlify targets did not reach V0.1 smoke readiness after deployment grace period." >&2
-          exit 1
+      - name: Verify critical Edge runtimes and pre-launch safety switches
+        run: node scripts/verify-edge-runtime-health.mjs
 
   live-browser-e2e:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
