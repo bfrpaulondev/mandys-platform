@@ -142,29 +142,29 @@ const owner = ac.newRole({ ...ownerAc.statements, ...operationalFull });
 const manager = ac.newRole({ ...adminAc.statements, ...operationalFull });
 const reception = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"], menu: ["read"], reservation: ["read", "create", "update", "cancel"],
+  restaurant: [], menu: ["read"], reservation: ["read", "create", "update", "cancel"],
   customer: ["read", "create", "update"], event: ["read", "create", "update"], order: ["read", "create", "update"],
-  stock: ["read"], analytics: ["read"], settings: ["read"],
+  stock: [], analytics: ["read"], settings: [],
 });
 const kitchen = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"], menu: ["read", "update"], reservation: ["read"], customer: [], event: ["read"],
-  order: ["read", "update"], stock: ["read", "update", "adjust"], analytics: [], settings: ["read"],
+  restaurant: [], menu: ["read", "update"], reservation: ["read"], customer: [], event: [],
+  order: ["read", "update"], stock: ["read", "update", "adjust"], analytics: [], settings: [],
 });
 const staff = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"], menu: ["read"], reservation: ["read"], customer: [], event: ["read"],
-  order: ["read", "update"], stock: ["read"], analytics: [], settings: ["read"],
+  restaurant: [], menu: ["read"], reservation: ["read"], customer: [], event: [],
+  order: ["read", "update"], stock: ["read"], analytics: [], settings: [],
 });
 const marketing = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"], menu: ["read", "update", "publish"], reservation: [], customer: [],
-  event: ["read", "create", "update"], order: [], stock: [], analytics: ["read"], settings: ["read"],
+  restaurant: [], menu: ["read", "update", "publish"], reservation: [], customer: [],
+  event: ["read", "create", "update"], order: [], stock: [], analytics: ["read"], settings: [],
 });
 const accounting = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"], menu: ["read"], reservation: ["read"], customer: [], event: ["read"],
-  order: ["read"], stock: ["read"], analytics: ["read"], settings: ["read"],
+  restaurant: [], menu: ["read"], reservation: [], customer: [], event: [],
+  order: [], stock: ["read"], analytics: ["read"], settings: [],
 });
 
 const basePath = "/functions/v1/mandys-auth/api/auth";
