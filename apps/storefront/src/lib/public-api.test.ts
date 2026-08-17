@@ -27,9 +27,10 @@ describe("storefront runtime resolution", () => {
     expect(normalizeStorefrontHost(null)).toBeNull();
   });
 
-  it("uses the live Maré demo tenant on Vercel and localhost", () => {
+  it("uses the live Maré demo tenant on managed preview hosts and localhost", () => {
     delete process.env.MANDYS_STOREFRONT_HOSTNAME;
     expect(resolveStorefrontHostname("preview-abc.vercel.app")).toBe("demo.mandys.local");
+    expect(resolveStorefrontHostname("mandy-store-front.netlify.app")).toBe("demo.mandys.local");
     expect(resolveStorefrontHostname("localhost")).toBe("demo.mandys.local");
   });
 
