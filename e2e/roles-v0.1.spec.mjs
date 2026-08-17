@@ -162,7 +162,7 @@ test("operational roles enforce navigation and API least privilege", async ({ br
       const page = await context.newPage();
       await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded", timeout: 25_000 });
       await expect(page.getByRole("navigation", { name: "Mandy's" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByText(`${role}`, { exact: true })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(new RegExp(`role:\\s*${role}`, "i"))).toBeVisible({ timeout: 15_000 });
       for (const label of nav[role].present) await expect(page.getByRole("link", { name: label, exact: true })).toBeVisible();
       for (const label of nav[role].absent) await expect(page.getByRole("link", { name: label, exact: true })).toHaveCount(0);
 
