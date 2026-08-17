@@ -1,5 +1,6 @@
 const AUTH_UPSTREAM =
   "https://dbfmjdissqsdhxhmqkqp.supabase.co/functions/v1/mandys-auth/api/auth";
+const TRUSTED_GATEWAY_ORIGIN = "https://mandys.pt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,13 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete("host");
   requestHeaders.delete("content-length");
+
+  // Browser traffic is same-origin to this Next.js gateway. Normalize the
+  // upstream Origin/Referer to Mandy's canonical trusted origin so preview
+  // hosts (Netlify/Vercel/custom deployment URLs) never need broad wildcard
+  // access at the authentication service itself.
+  requestHeaders.set("origin", TRUSTED_GATEWAY_ORIGIN);
+  requestHeaders.set("referer", `${TRUSTED_GATEWAY_ORIGIN}/`);
   requestHeaders.set("x-mandys-gateway", "backoffice");
 
   const init: RequestInit = {
