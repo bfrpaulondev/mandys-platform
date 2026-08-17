@@ -1,7 +1,7 @@
 "use client";
 
 import type { Locale } from "@mandys/i18n";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const copy = {
   "pt-PT": {
@@ -63,6 +63,7 @@ const fieldClassName =
 
 export function ReservationForm({ locale, disabled }: { locale: Locale; disabled: boolean }) {
   const c = copy[locale];
+  const formRef = useRef<HTMLFormElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(disabled ? c.unavailable : null);
   const [success, setSuccess] = useState(false);
@@ -89,6 +90,7 @@ export function ReservationForm({ locale, disabled }: { locale: Locale; disabled
       });
 
       if (!response.ok) throw new Error("reservation_failed");
+      formRef.current?.reset();
       setSuccess(true);
       setMessage(c.success);
     } catch {
@@ -100,34 +102,83 @@ export function ReservationForm({ locale, disabled }: { locale: Locale; disabled
   }
 
   return (
-    <form action={submit} className="grid gap-4 sm:grid-cols-2">
+    <form ref={formRef} action={submit} data-testid="storefront-reservation-form" className="grid gap-4 sm:grid-cols-2">
       <label className="block text-sm font-medium">
         {c.name}
-        <input name="guestName" required minLength={2} maxLength={120} disabled={disabled} className={fieldClassName} />
+        <input
+          name="guestName"
+          autoComplete="name"
+          data-testid="reservation-guest-name"
+          required
+          minLength={2}
+          maxLength={120}
+          disabled={disabled}
+          className={fieldClassName}
+        />
       </label>
       <label className="block text-sm font-medium">
         {c.date}
-        <input name="startsAt" type="datetime-local" required disabled={disabled} className={fieldClassName} />
+        <input
+          name="startsAt"
+          data-testid="reservation-starts-at"
+          type="datetime-local"
+          required
+          disabled={disabled}
+          className={fieldClassName}
+        />
       </label>
       <label className="block text-sm font-medium">
         {c.guests}
-        <input name="partySize" type="number" min={1} max={100} defaultValue={2} required disabled={disabled} className={fieldClassName} />
+        <input
+          name="partySize"
+          data-testid="reservation-party-size"
+          type="number"
+          min={1}
+          max={100}
+          defaultValue={2}
+          required
+          disabled={disabled}
+          className={fieldClassName}
+        />
       </label>
       <label className="block text-sm font-medium">
         {c.email}
-        <input name="guestEmail" type="email" disabled={disabled} className={fieldClassName} />
+        <input
+          name="guestEmail"
+          data-testid="reservation-email"
+          type="email"
+          autoComplete="email"
+          disabled={disabled}
+          className={fieldClassName}
+        />
       </label>
       <label className="block text-sm font-medium">
         {c.phone}
-        <input name="guestPhone" maxLength={40} disabled={disabled} className={fieldClassName} />
+        <input
+          name="guestPhone"
+          data-testid="reservation-phone"
+          type="tel"
+          autoComplete="tel"
+          maxLength={40}
+          disabled={disabled}
+          className={fieldClassName}
+        />
       </label>
       <label className="block text-sm font-medium sm:col-span-2">
         {c.notes}
-        <textarea name="notes" rows={3} maxLength={2000} disabled={disabled} className={`${fieldClassName} py-3`} />
+        <textarea
+          name="notes"
+          data-testid="reservation-notes"
+          rows={3}
+          maxLength={2000}
+          disabled={disabled}
+          className={`${fieldClassName} py-3`}
+        />
       </label>
       <div className="sm:col-span-2">
         <button
           type="submit"
+          data-testid="reservation-submit"
           disabled={disabled || submitting}
           className="inline-flex min-h-12 items-center justify-center rounded-[var(--mandys-radius-sm)] bg-[var(--mandys-accent)] px-5 text-sm font-semibold text-[var(--mandys-accent-foreground)] transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -136,6 +187,8 @@ export function ReservationForm({ locale, disabled }: { locale: Locale; disabled
         {message ? (
           <p
             role="status"
+            data-testid="reservation-status"
+            data-state={success ? "success" : disabled ? "disabled" : "error"}
             className={`mt-3 text-sm leading-6 ${success ? "text-[var(--mandys-foreground)]" : "text-[var(--mandys-foreground-muted)]"}`}
           >
             {message}
