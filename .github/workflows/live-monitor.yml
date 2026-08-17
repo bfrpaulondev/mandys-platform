@@ -11,7 +11,7 @@ concurrency:
 jobs:
   readiness:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -23,3 +23,26 @@ jobs:
         run: node scripts/verify-v0.1-deployments.mjs
       - name: Verify critical Edge runtimes and pre-launch safety switches
         run: node scripts/verify-edge-runtime-health.mjs
+      - name: Prepare focused Playwright runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p playwright-runtime
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs playwright-runtime/
+          cd playwright-runtime
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.62.1
+          npx playwright install --with-deps chromium
+      - name: Verify live responsive browser surfaces
+        working-directory: playwright-runtime
+        run: npx playwright test live-v0.1.spec.mjs --config=playwright.config.mjs
+      - name: Upload browser test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-monitor-browser-${{ github.run_id }}
+          path: |
+            playwright-runtime/playwright-report
+            playwright-runtime/test-results
+          if-no-files-found: ignore
+          retention-days: 7
