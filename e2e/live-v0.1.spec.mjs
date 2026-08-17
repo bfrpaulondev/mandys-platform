@@ -13,6 +13,12 @@ const locales = [
   ["es", "Español", "Reserva directamente", "Reservar mesa"],
 ];
 
+const responsiveViewports = [
+  ["mobile", { width: 390, height: 844 }],
+  ["tablet", { width: 768, height: 1024 }],
+  ["desktop", { width: 1440, height: 900 }],
+];
+
 function futureDateValue(offsetDays = 2) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offsetDays);
@@ -33,6 +39,18 @@ function watchRuntime(page) {
   });
 
   return failures;
+}
+
+async function expectNoHorizontalOverflow(page) {
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+
+  expect(
+    overflow.scrollWidth,
+    `horizontal overflow detected: scrollWidth=${overflow.scrollWidth}, clientWidth=${overflow.clientWidth}`,
+  ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 }
 
 for (const [locale, localeLabel, bookingTitle, bookingCta] of locales) {
@@ -70,24 +88,28 @@ test("Storefront reservation availability gateway returns live structured data",
   expect(body?.error).toBeUndefined();
 });
 
-test("Storefront booking surface remains usable on a mobile viewport", async ({ page }) => {
-  const runtimeFailures = watchRuntime(page);
-  await page.setViewportSize({ width: 390, height: 844 });
+for (const [viewportName, viewport] of responsiveViewports) {
+  test(`Storefront reservation surface is usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
+    const runtimeFailures = watchRuntime(page);
+    await page.setViewportSize(viewport);
 
-  const response = await page.goto(`${storefrontOrigin}/pt-PT`, {
-    waitUntil: "domcontentloaded",
+    const response = await page.goto(`${storefrontOrigin}/pt-PT`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(response?.ok()).toBeTruthy();
+    await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
+    await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
+    await expect(page.getByTestId("reservation-guest-name")).toBeVisible();
+    await expect(page.getByTestId("reservation-party-size")).toBeVisible();
+    await expect(page.getByTestId("reservation-date")).toBeVisible();
+    await expect(page.getByTestId("reservation-starts-at")).toBeVisible();
+    await expect(page.getByTestId("reservation-submit")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
   });
-
-  expect(response?.ok()).toBeTruthy();
-  await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
-  await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
-  await expect(page.getByTestId("reservation-guest-name")).toBeVisible();
-  await expect(page.getByTestId("reservation-party-size")).toBeVisible();
-  await expect(page.getByTestId("reservation-date")).toBeVisible();
-  await expect(page.getByTestId("reservation-starts-at")).toBeVisible();
-
-  expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
-});
+}
 
 test("Backoffice login renders a real interactive authentication surface", async ({ page }) => {
   const runtimeFailures = watchRuntime(page);
@@ -105,3 +127,22 @@ test("Backoffice login renders a real interactive authentication surface", async
 
   expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
 });
+
+for (const [viewportName, viewport] of responsiveViewports) {
+  test(`Backoffice login remains usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
+    const runtimeFailures = watchRuntime(page);
+    await page.setViewportSize(viewport);
+
+    const response = await page.goto(`${backofficeOrigin}/en/login`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(response?.ok()).toBeTruthy();
+    await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign in to Mandy's", exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
+  });
+}
