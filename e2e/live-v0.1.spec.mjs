@@ -73,7 +73,7 @@ for (const [locale, localeLabel, bookingTitle, bookingCta] of locales) {
   });
 }
 
-test("Storefront reservation availability gateway returns live structured data", async ({ request }) => {
+test("Storefront reservation availability gateway returns the live policy contract", async ({ request }) => {
   const response = await request.get(
     `${storefrontOrigin}/api/reservations?date=${encodeURIComponent(futureDateValue())}&partySize=2`,
     { headers: { accept: "application/json" } },
@@ -84,8 +84,27 @@ test("Storefront reservation availability gateway returns live structured data",
 
   const body = await response.json();
   expect(body?.data?.timezone).toBeTruthy();
+  expect(Number.isInteger(body?.data?.durationMinutes)).toBeTruthy();
+  expect([15, 30, 60]).toContain(body?.data?.intervalMinutes);
+  expect(Number.isInteger(body?.data?.minimumNoticeMinutes)).toBeTruthy();
+  expect(Number.isInteger(body?.data?.maximumAdvanceDays)).toBeTruthy();
+  expect(body?.data?.maximumAdvanceDays).toBeGreaterThan(0);
+  expect(Number.isInteger(body?.data?.maximumPartySize)).toBeTruthy();
+  expect(body?.data?.maximumPartySize).toBeGreaterThan(0);
+  expect(typeof body?.data?.waitlistEnabled).toBe("boolean");
   expect(Array.isArray(body?.data?.slots)).toBeTruthy();
   expect(body?.error).toBeUndefined();
+});
+
+test("Storefront reservation gateway rejects impossible calendar dates without a server error", async ({ request }) => {
+  const response = await request.get(
+    `${storefrontOrigin}/api/reservations?date=2026-02-30&partySize=2`,
+    { headers: { accept: "application/json" } },
+  );
+
+  expect(response.status()).toBe(400);
+  const body = await response.json();
+  expect(body?.error).toBe("INVALID_QUERY");
 });
 
 for (const [viewportName, viewport] of responsiveViewports) {

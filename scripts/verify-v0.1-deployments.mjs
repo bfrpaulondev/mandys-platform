@@ -63,7 +63,16 @@ const targets = [
   {
     name: "Storefront reservation availability gateway",
     url: `${storefrontOrigin}/api/reservations?date=${encodeURIComponent(reservationProbeDate)}&partySize=2`,
-    requiredText: [],
+    requiredText: [
+      '"timezone"',
+      '"durationMinutes"',
+      '"intervalMinutes"',
+      '"minimumNoticeMinutes"',
+      '"maximumAdvanceDays"',
+      '"maximumPartySize"',
+      '"waitlistEnabled"',
+      '"slots"',
+    ],
     forbiddenText: [
       "HOST_UNAVAILABLE",
       "API_UNAVAILABLE",
@@ -85,7 +94,7 @@ for (const target of targets) {
     const response = await fetch(target.url, {
       redirect: "follow",
       signal: controller.signal,
-      headers: { "user-agent": "mandys-v0.1-readiness-check/1.3" },
+      headers: { "user-agent": "mandys-v0.1-readiness-check/1.4" },
     });
     const body = await response.text();
     const normalizedBody = body.toLocaleLowerCase();
@@ -117,8 +126,13 @@ for (const target of targets) {
 
     console.log(`PASS ${target.name}: ${response.status} ${response.url}`);
   } catch (error) {
-    failures.push({ name: target.name, error: error instanceof Error ? error.message : String(error) });
-    console.error(`FAIL ${target.name}: ${error instanceof Error ? error.message : String(error)}`);
+    failures.push({
+      name: target.name,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    console.error(
+      `FAIL ${target.name}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   } finally {
     clearTimeout(timeout);
   }
@@ -131,5 +145,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nPublic deployment smoke checks passed with a DB-backed Storefront, localized reservation surface and live reservation availability gateway. Browser E2E is still required before V0.1 is declared ready.",
+  "\nPublic deployment smoke checks passed with a DB-backed Storefront, localized reservation surface and live reservation policy contract. Browser E2E is still required before V0.1 is declared ready.",
 );
