@@ -9,7 +9,15 @@ import {
 } from "../../lib/reservation-time";
 
 type Slot = { startsAt: string; endsAt: string; available: boolean; remainingCapacity: number };
-type AvailabilityResponse = { data: { timezone: string; durationMinutes: number; slots: Slot[] } };
+type AvailabilityResponse = {
+  data: {
+    timezone: string;
+    durationMinutes: number;
+    maximumAdvanceDays: number;
+    maximumPartySize: number;
+    slots: Slot[];
+  };
+};
 
 type ErrorResponse = { error?: string; message?: string };
 
@@ -56,6 +64,8 @@ export function ReservationForm({
   const [timezone, setTimezone] = useState(restaurantTimezone);
   const [date, setDate] = useState(() => restaurantDateInputValue(restaurantTimezone, 1));
   const [partySize, setPartySize] = useState(2);
+  const [maximumPartySize, setMaximumPartySize] = useState(100);
+  const [maximumAdvanceDays, setMaximumAdvanceDays] = useState(365);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotLoading, setSlotLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -66,7 +76,10 @@ export function ReservationForm({
     [locale, timezone],
   );
   const minimumDate = useMemo(() => restaurantDateInputValue(timezone), [timezone]);
-  const maximumDate = useMemo(() => restaurantDateInputValue(timezone, 365), [timezone]);
+  const maximumDate = useMemo(
+    () => restaurantDateInputValue(timezone, maximumAdvanceDays),
+    [maximumAdvanceDays, timezone],
+  );
 
   useEffect(() => {
     if (disabled || !date || partySize < 1) return;
@@ -80,7 +93,12 @@ export function ReservationForm({
       })
       .then(body => {
         if (!cancelled) {
+          const nextMaximumPartySize = Math.max(1, Math.min(100, body.data.maximumPartySize));
+          const nextMaximumAdvanceDays = Math.max(1, Math.min(365, body.data.maximumAdvanceDays));
           setTimezone(body.data.timezone);
+          setMaximumPartySize(nextMaximumPartySize);
+          setMaximumAdvanceDays(nextMaximumAdvanceDays);
+          setPartySize((current) => Math.min(current, nextMaximumPartySize));
           setSlots(body.data.slots.filter(slot => slot.available));
         }
       })
@@ -131,7 +149,7 @@ export function ReservationForm({
   return (
     <form ref={formRef} action={submit} data-testid="storefront-reservation-form" className="grid gap-4 sm:grid-cols-2">
       <label className="block text-sm font-medium">{c.name}<input name="guestName" autoComplete="name" data-testid="reservation-guest-name" required minLength={2} maxLength={120} disabled={disabled} className={fieldClassName} /></label>
-      <label className="block text-sm font-medium">{c.guests}<input name="partySize" data-testid="reservation-party-size" type="number" min={1} max={100} value={partySize} onChange={event => setPartySize(Math.max(1, Math.min(100, Number(event.target.value) || 1)))} required disabled={disabled} className={fieldClassName} /></label>
+      <label className="block text-sm font-medium">{c.guests}<input name="partySize" data-testid="reservation-party-size" type="number" min={1} max={maximumPartySize} value={partySize} onChange={event => setPartySize(Math.max(1, Math.min(maximumPartySize, Number(event.target.value) || 1)))} required disabled={disabled} className={fieldClassName} /></label>
       <label className="block text-sm font-medium">{c.date}<input name="date" data-testid="reservation-date" type="date" min={minimumDate} max={maximumDate} value={date} onChange={event => setDate(event.target.value)} required disabled={disabled} className={fieldClassName} /></label>
       <label className="block text-sm font-medium">{c.time}
         <select name="startsAt" data-testid="reservation-starts-at" required disabled={disabled || slotLoading || slots.length === 0} className={fieldClassName} defaultValue="">
