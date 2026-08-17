@@ -62,10 +62,14 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
     const sessionBody = await sessionResponse.json();
     expect(sessionBody?.user?.email).toBe(email);
 
+    // After the request-context signup the browser can race the app's auth redirect.
+    // Resolve as soon as navigation commits and let the rendered onboarding form be
+    // the readiness signal instead of waiting on DOMContentLoaded for a frame that
+    // may be replaced by Next.js during session hydration.
     const onboardingPage = await page.goto(`${backofficeOrigin}/en/onboarding`, {
-      waitUntil: "domcontentloaded",
+      waitUntil: "commit",
     });
-    expect(onboardingPage?.ok()).toBeTruthy();
+    expect(onboardingPage?.status(), "onboarding returned a server error").toBeLessThan(500);
     await expect(page.getByLabel("Restaurant public name", { exact: true })).toBeVisible({
       timeout: 15_000,
     });
