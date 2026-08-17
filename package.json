@@ -13,7 +13,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check:edge-functions": "node scripts/check-edge-functions.mjs && node scripts/check-public-reservation-rules.mjs && node scripts/check-billing-contract.mjs && node scripts/check-role-matrix-source.mjs",
+    "check:edge-functions": "node scripts/check-edge-functions.mjs && node scripts/check-public-reservation-rules.mjs && node scripts/check-billing-contract.mjs && node scripts/check-role-matrix-source.mjs && node scripts/check-runtime-role-enforcement.mjs",
     "check:commercial-pricing": "node scripts/check-commercial-pricing.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm check:edge-functions && pnpm check:commercial-pricing && pnpm test && pnpm build",
     "verify:v0.1": "node scripts/verify-v0.1-deployments.mjs",
@@ -31,8 +31,8 @@
     "@types/node": "^24.0.0",
     "eslint": "^9.0.0",
     "prettier": "^3.6.0",
-    "turbo": "^2.5.0",
-    "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "turbo": "^2.10.10",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }
