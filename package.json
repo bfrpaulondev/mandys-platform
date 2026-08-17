@@ -13,7 +13,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "check:edge-functions": "node scripts/check-edge-functions.mjs && node scripts/check-public-reservation-rules.mjs",
+    "check:edge-functions": "node scripts/check-edge-functions.mjs && node scripts/check-public-reservation-rules.mjs && node scripts/check-billing-contract.mjs",
     "check:commercial-pricing": "node scripts/check-commercial-pricing.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm check:edge-functions && pnpm check:commercial-pricing && pnpm test && pnpm build",
     "verify:v0.1": "node scripts/verify-v0.1-deployments.mjs",
