@@ -35,6 +35,18 @@ export async function POST(request: Request) {
     );
   }
 
+  const hasEmail = typeof body.guestEmail === "string" && body.guestEmail.trim().length > 0;
+  const hasPhone = typeof body.guestPhone === "string" && body.guestPhone.trim().length > 0;
+  if (!hasEmail && !hasPhone) {
+    return NextResponse.json(
+      {
+        error: "CONTACT_REQUIRED",
+        message: "An email address or phone number is required for the waitlist",
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     const response = await fetch(`${PUBLIC_RESERVATIONS_UPSTREAM}/v1/public/waitlist`, {
       method: "POST",

@@ -33,9 +33,7 @@ function watchRuntime(page) {
     if (message.type() === "error") failures.push(`console.error: ${message.text()}`);
   });
   page.on("response", (response) => {
-    if (response.status() >= 500) {
-      failures.push(`HTTP ${response.status()}: ${response.url()}`);
-    }
+    if (response.status() >= 500) failures.push(`HTTP ${response.status()}: ${response.url()}`);
   });
 
   return failures;
@@ -56,10 +54,7 @@ async function expectNoHorizontalOverflow(page) {
 for (const [locale, localeLabel, bookingTitle, bookingCta] of locales) {
   test(`Storefront ${locale} renders the live localized reservation surface`, async ({ page }) => {
     const runtimeFailures = watchRuntime(page);
-
-    const response = await page.goto(`${storefrontOrigin}/${locale}`, {
-      waitUntil: "domcontentloaded",
-    });
+    const response = await page.goto(`${storefrontOrigin}/${locale}`, { waitUntil: "domcontentloaded" });
 
     expect(response?.ok()).toBeTruthy();
     await expect(page.getByText(liveMarker, { exact: false }).first()).toBeVisible();
@@ -68,7 +63,6 @@ for (const [locale, localeLabel, bookingTitle, bookingCta] of locales) {
     await expect(page.getByRole("link", { name: bookingCta, exact: true }).first()).toBeVisible();
     await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
     await expect(page.getByText("Mandy's Reserve", { exact: true })).toBeVisible();
-
     expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
   });
 }
@@ -81,7 +75,6 @@ test("Storefront reservation availability gateway returns the live policy contra
 
   expect(response.ok()).toBeTruthy();
   expect(response.headers()["content-type"]).toContain("application/json");
-
   const body = await response.json();
   expect(body?.data?.timezone).toBeTruthy();
   expect(Number.isInteger(body?.data?.durationMinutes)).toBeTruthy();
@@ -97,40 +90,35 @@ test("Storefront reservation availability gateway returns the live policy contra
 });
 
 test("Storefront reservation gateway rejects impossible calendar dates without a server error", async ({ request }) => {
-  const response = await request.get(
-    `${storefrontOrigin}/api/reservations?date=2026-02-30&partySize=2`,
-    { headers: { accept: "application/json" } },
-  );
-
+  const response = await request.get(`${storefrontOrigin}/api/reservations?date=2026-02-30&partySize=2`, {
+    headers: { accept: "application/json" },
+  });
   expect(response.status()).toBe(400);
   const body = await response.json();
   expect(body?.error).toBe("INVALID_QUERY");
 });
 
-test("Storefront waitlist gateway rejects invalid submissions without mutating data", async ({ request }) => {
+test("Storefront waitlist gateway requires a contact method without mutating data", async ({ request }) => {
   const response = await request.post(`${storefrontOrigin}/api/reservations/waitlist`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: {
       requestedDate: futureDateValue(),
       partySize: 2,
       locale: "en",
-      guestName: "",
+      guestName: "Readiness Probe",
     },
   });
 
   expect(response.status()).toBe(400);
   const body = await response.json();
-  expect(body?.error).toBe("INVALID_REQUEST");
+  expect(body?.error).toBe("CONTACT_REQUIRED");
 });
 
 for (const [viewportName, viewport] of responsiveViewports) {
   test(`Storefront reservation surface is usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
     const runtimeFailures = watchRuntime(page);
     await page.setViewportSize(viewport);
-
-    const response = await page.goto(`${storefrontOrigin}/pt-PT`, {
-      waitUntil: "domcontentloaded",
-    });
+    const response = await page.goto(`${storefrontOrigin}/pt-PT`, { waitUntil: "domcontentloaded" });
 
     expect(response?.ok()).toBeTruthy();
     await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
@@ -141,17 +129,13 @@ for (const [viewportName, viewport] of responsiveViewports) {
     await expect(page.getByTestId("reservation-starts-at")).toBeVisible();
     await expect(page.getByTestId("reservation-submit")).toBeVisible();
     await expectNoHorizontalOverflow(page);
-
     expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
   });
 }
 
 test("Backoffice login renders a real interactive authentication surface", async ({ page }) => {
   const runtimeFailures = watchRuntime(page);
-
-  const response = await page.goto(`${backofficeOrigin}/en/login`, {
-    waitUntil: "domcontentloaded",
-  });
+  const response = await page.goto(`${backofficeOrigin}/en/login`, { waitUntil: "domcontentloaded" });
 
   expect(response?.ok()).toBeTruthy();
   await expect(page.getByText("Mandy's Backoffice", { exact: true })).toBeVisible();
@@ -159,7 +143,6 @@ test("Backoffice login renders a real interactive authentication surface", async
   await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in to Mandy's", exact: true })).toBeVisible();
-
   expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
 });
 
@@ -167,17 +150,13 @@ for (const [viewportName, viewport] of responsiveViewports) {
   test(`Backoffice login remains usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
     const runtimeFailures = watchRuntime(page);
     await page.setViewportSize(viewport);
-
-    const response = await page.goto(`${backofficeOrigin}/en/login`, {
-      waitUntil: "domcontentloaded",
-    });
+    const response = await page.goto(`${backofficeOrigin}/en/login`, { waitUntil: "domcontentloaded" });
 
     expect(response?.ok()).toBeTruthy();
     await expect(page.getByLabel("Email", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in to Mandy's", exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
-
     expect(runtimeFailures, runtimeFailures.join("\n")).toEqual([]);
   });
 }

@@ -49,6 +49,7 @@ const copy = {
     waitlistSuccess: "Está na lista de espera. O restaurante poderá entrar em contacto se surgir disponibilidade.",
     waitlistAlready: "Já existe um pedido na lista de espera com estes dados para esta data.",
     slotsAvailable: "Entretanto existem horários disponíveis. Escolha um horário para reservar.",
+    waitlistContact: "Indique um email ou telefone para o restaurante poder entrar em contacto.",
     waitlistError: "Não foi possível entrar na lista de espera. Tente novamente.",
   },
   "pt-BR": {
@@ -72,6 +73,7 @@ const copy = {
     waitlistSuccess: "Você entrou na lista de espera. O restaurante poderá entrar em contato se surgir disponibilidade.",
     waitlistAlready: "Já existe um pedido na lista de espera com estes dados para esta data.",
     slotsAvailable: "Agora há horários disponíveis. Escolha um horário para reservar.",
+    waitlistContact: "Informe um e-mail ou telefone para o restaurante poder entrar em contato.",
     waitlistError: "Não foi possível entrar na lista de espera. Tente novamente.",
   },
   en: {
@@ -95,6 +97,7 @@ const copy = {
     waitlistSuccess: "You are on the waitlist. The restaurant may contact you if a table becomes available.",
     waitlistAlready: "A waitlist request with these details already exists for this date.",
     slotsAvailable: "Times are now available. Choose a time to book instead.",
+    waitlistContact: "Add an email address or phone number so the restaurant can contact you.",
     waitlistError: "The waitlist request could not be sent. Please try again.",
   },
   es: {
@@ -118,6 +121,7 @@ const copy = {
     waitlistSuccess: "Estás en la lista de espera. El restaurante podrá contactarte si surge disponibilidad.",
     waitlistAlready: "Ya existe una solicitud en la lista de espera con estos datos para esta fecha.",
     slotsAvailable: "Ahora hay horarios disponibles. Elige un horario para reservar.",
+    waitlistContact: "Añade un email o teléfono para que el restaurante pueda contactarte.",
     waitlistError: "No se pudo enviar la solicitud a la lista de espera. Inténtalo de nuevo.",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
@@ -142,6 +146,7 @@ export function ReservationForm({
   const [maximumPartySize, setMaximumPartySize] = useState(100);
   const [maximumAdvanceDays, setMaximumAdvanceDays] = useState(365);
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
+  const [availabilityRevision, setAvailabilityRevision] = useState(0);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotLoading, setSlotLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -162,8 +167,6 @@ export function ReservationForm({
     if (disabled || !date || partySize < 1) return;
     let cancelled = false;
     setSlotLoading(true);
-    setMessage(null);
-    setSuccess(false);
     fetch(`/api/reservations?date=${encodeURIComponent(date)}&partySize=${partySize}`, {
       cache: "no-store",
     })
@@ -193,6 +196,7 @@ export function ReservationForm({
         if (!cancelled) {
           setSlots([]);
           setWaitlistEnabled(false);
+          setSuccess(false);
           setMessage(c.error);
         }
       })
@@ -202,7 +206,12 @@ export function ReservationForm({
     return () => {
       cancelled = true;
     };
-  }, [c.error, date, disabled, partySize]);
+  }, [availabilityRevision, c.error, date, disabled, partySize]);
+
+  function resetFeedback() {
+    setMessage(null);
+    setSuccess(false);
+  }
 
   async function submit(formData: FormData) {
     if (disabled) return;
@@ -256,6 +265,14 @@ export function ReservationForm({
   async function joinWaitlist() {
     if (disabled || !formRef.current || !formRef.current.reportValidity()) return;
     const formData = new FormData(formRef.current);
+    const guestEmail = String(formData.get("guestEmail") ?? "").trim();
+    const guestPhone = String(formData.get("guestPhone") ?? "").trim();
+    if (!guestEmail && !guestPhone) {
+      setSuccess(false);
+      setMessage(c.waitlistContact);
+      return;
+    }
+
     setWaitlistSubmitting(true);
     setMessage(null);
     setSuccess(false);
@@ -269,12 +286,8 @@ export function ReservationForm({
           partySize,
           locale,
           guestName: String(formData.get("guestName") ?? ""),
-          ...(formData.get("guestEmail")
-            ? { guestEmail: String(formData.get("guestEmail")) }
-            : {}),
-          ...(formData.get("guestPhone")
-            ? { guestPhone: String(formData.get("guestPhone")) }
-            : {}),
+          ...(guestEmail ? { guestEmail } : {}),
+          ...(guestPhone ? { guestPhone } : {}),
           ...(formData.get("notes") ? { notes: String(formData.get("notes")) } : {}),
         }),
       });
@@ -283,11 +296,16 @@ export function ReservationForm({
       if (!response.ok) {
         if (body.error === "SLOTS_AVAILABLE") {
           setMessage(c.slotsAvailable);
+          setAvailabilityRevision((current) => current + 1);
           return;
         }
         if (body.error === "ALREADY_WAITLISTED") {
           setSuccess(true);
           setMessage(c.waitlistAlready);
+          return;
+        }
+        if (body.error === "CONTACT_REQUIRED") {
+          setMessage(c.waitlistContact);
           return;
         }
         throw new Error("waitlist_failed");
@@ -335,11 +353,12 @@ export function ReservationForm({
           min={1}
           max={maximumPartySize}
           value={partySize}
-          onChange={(event) =>
+          onChange={(event) => {
+            resetFeedback();
             setPartySize(
               Math.max(1, Math.min(maximumPartySize, Number(event.target.value) || 1)),
-            )
-          }
+            );
+          }}
           required
           disabled={disabled}
           className={fieldClassName}
@@ -354,7 +373,10 @@ export function ReservationForm({
           min={minimumDate}
           max={maximumDate}
           value={date}
-          onChange={(event) => setDate(event.target.value)}
+          onChange={(event) => {
+            resetFeedback();
+            setDate(event.target.value);
+          }}
           required
           disabled={disabled}
           className={fieldClassName}
