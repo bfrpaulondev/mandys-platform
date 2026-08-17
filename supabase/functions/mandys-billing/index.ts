@@ -17,8 +17,14 @@ const sql = postgres(connectionString, {
   },
 });
 
-type Context = { userId: string; organizationId: string; role: string };
+type Context = {
+  userId: string;
+  email: string | null;
+  organizationId: string;
+  role: string;
+};
 type Result = { status?: number; body: unknown };
+type BillingInterval = "month" | "year";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -47,6 +53,7 @@ async function context(request: Request): Promise<Context | Result> {
 
   const body = (await response.json().catch(() => null)) as Record<string, any> | null;
   const userId = body?.user?.id;
+  const email = typeof body?.user?.email === "string" ? body.user.email : null;
   const organizationId = body?.session?.activeOrganizationId;
   if (typeof userId !== "string" || typeof organizationId !== "string") {
     return fail(401, "TENANT_CONTEXT_REQUIRED", "Select an active restaurant organization");
@@ -60,7 +67,7 @@ async function context(request: Request): Promise<Context | Result> {
   `;
   const role = members[0]?.role;
   if (!role) return fail(403, "FORBIDDEN", "Organization membership is required");
-  return { userId, organizationId, role };
+  return { userId, email, organizationId, role };
 }
 
 async function billing(ctx: Context): Promise<Result> {
@@ -170,6 +177,225 @@ async function billing(ctx: Context): Promise<Result> {
   });
 }
 
+function appendPriceData(
+  body: URLSearchParams,
+  index: number,
+  options: {
+    currency: string;
+    unitAmount: number;
+    interval: BillingInterval;
+    name: string;
+    quantity?: number;
+    unitLabel?: string;
+  },
+) {
+  const prefix = `line_items[${index}]`;
+  body.set(`${prefix}[price_data][currency]`, options.currency.toLowerCase());
+  body.set(`${prefix}[price_data][unit_amount]`, String(options.unitAmount));
+  body.set(`${prefix}[price_data][recurring][interval]`, options.interval);
+  body.set(`${prefix}[price_data][product_data][name]`, options.name);
+  if (options.unitLabel) {
+    body.set(`${prefix}[price_data][product_data][unit_label]`, options.unitLabel);
+  }
+  body.set(`${prefix}[quantity]`, String(options.quantity ?? 1));
+}
+
+async function checkout(ctx: Context, request: Request): Promise<Result> {
+  if (ctx.role !== "owner") {
+    return fail(403, "FORBIDDEN", "Only an organization owner can start checkout");
+  }
+
+  const payload = (await request.json().catch(() => null)) as {
+    planKey?: unknown;
+    interval?: unknown;
+    locale?: unknown;
+  } | null;
+  const planKey = typeof payload?.planKey === "string" ? payload.planKey.trim() : "";
+  const interval = payload?.interval === "year" ? "year" : payload?.interval === "month" ? "month" : null;
+  const locale =
+    typeof payload?.locale === "string" && /^(pt-PT|pt-BR|en|es)$/.test(payload.locale)
+      ? payload.locale
+      : "en";
+  if (!planKey || !interval) {
+    return fail(400, "INVALID_CHECKOUT_REQUEST", "A valid plan and billing interval are required");
+  }
+
+  const checkoutData = await sql.begin(async (tx) => {
+    await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;
+    const locations = await tx<any[]>`
+      select country_code
+      from mandys.locations
+      where organization_id=${ctx.organizationId} and is_active=true
+      order by created_at asc
+      limit 1
+    `;
+    const countryCode = locations[0]?.country_code;
+    if (typeof countryCode !== "string" || !/^[A-Z]{2}$/.test(countryCode)) {
+      return { error: fail(409, "MARKET_NOT_CONFIGURED", "Restaurant country is not configured for billing") };
+    }
+
+    const prices = await tx<any[]>`
+      select pp.plan_key,
+             pp.country_code,
+             pp.currency,
+             pp.monthly_price_minor,
+             pp.annual_price_minor,
+             pp.included_staff,
+             pp.extra_staff_monthly_minor,
+             pp.is_public,
+             pp.is_active,
+             p.display_name
+      from mandys.saas_plan_prices pp
+      join mandys.saas_plans p on p.plan_key=pp.plan_key
+      where pp.plan_key=${planKey}
+        and pp.country_code=${countryCode}
+        and pp.is_active=true
+        and p.is_active=true
+      limit 1
+    `;
+    const price = prices[0];
+    if (!price) {
+      return { error: fail(409, "MARKET_PRICE_UNAVAILABLE", "This plan is not priced for the restaurant market") };
+    }
+    // The first commercial lock lives in the database. Draft prices may exist
+    // internally, but they can never reach Stripe until explicitly published.
+    if (!price.is_public) {
+      return { error: fail(409, "PRICING_NOT_PUBLIC", "Checkout is not available for this market yet") };
+    }
+
+    const unitAmount = interval === "year" ? price.annual_price_minor : price.monthly_price_minor;
+    if (!Number.isInteger(unitAmount) || unitAmount < 0) {
+      return { error: fail(409, "PRICE_NOT_READY", "The selected billing interval is not ready") };
+    }
+
+    const memberCountRows = await tx<{ count: number }[]>`
+      select count(*)::int as count
+      from mandys.member
+      where organization_id=${ctx.organizationId}
+    `;
+    const activeStaff = memberCountRows[0]?.count ?? 0;
+    const includedStaff = Number(price.included_staff ?? 0);
+    const extraStaffCount = Math.max(0, activeStaff - includedStaff);
+    const extraStaffMonthly = Number(price.extra_staff_monthly_minor ?? 0);
+    const extraStaffUnitAmount = interval === "year" ? extraStaffMonthly * 10 : extraStaffMonthly;
+
+    const subscriptions = await tx<any[]>`
+      select provider_customer_id,provider_subscription_id,status
+      from mandys.tenant_subscriptions
+      where organization_id=${ctx.organizationId}
+      limit 1
+    `;
+
+    return {
+      price: {
+        displayName: String(price.display_name),
+        currency: String(price.currency),
+        unitAmount,
+        includedStaff,
+        extraStaffCount,
+        extraStaffUnitAmount,
+      },
+      subscription: subscriptions[0] ?? null,
+    };
+  });
+
+  if ("error" in checkoutData) return checkoutData.error;
+
+  // Provider and fiscal readiness are independent kill switches. Even if a
+  // price is accidentally published, checkout still cannot call Stripe unless
+  // production billing and automatic tax have both been explicitly enabled.
+  const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+  const publicOrigin = Deno.env.get("MANDYS_BACKOFFICE_PUBLIC_ORIGIN");
+  const liveReady = Deno.env.get("MANDYS_BILLING_LIVE_READY") === "true";
+  const taxReady = Deno.env.get("MANDYS_STRIPE_AUTOMATIC_TAX_READY") === "true";
+  if (!stripeSecretKey || !publicOrigin || !liveReady || !taxReady) {
+    return fail(503, "BILLING_NOT_CONFIGURED", "Live subscription checkout is not configured");
+  }
+
+  const returnOrigin = publicOrigin.replace(/\/+$/, "");
+  if (!/^https:\/\//.test(returnOrigin)) {
+    return fail(503, "BILLING_NOT_CONFIGURED", "Billing return origin must use HTTPS");
+  }
+
+  const stripeBody = new URLSearchParams();
+  stripeBody.set("mode", "subscription");
+  stripeBody.set("success_url", `${returnOrigin}/${locale}/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`);
+  stripeBody.set("cancel_url", `${returnOrigin}/${locale}/billing?checkout=cancelled`);
+  stripeBody.set("automatic_tax[enabled]", "true");
+  stripeBody.set("allow_promotion_codes", "true");
+  stripeBody.set("metadata[mandys_organization_id]", ctx.organizationId);
+  stripeBody.set("metadata[mandys_plan_key]", planKey);
+  stripeBody.set("metadata[mandys_interval]", interval);
+  stripeBody.set("subscription_data[metadata][mandys_organization_id]", ctx.organizationId);
+  stripeBody.set("subscription_data[metadata][mandys_plan_key]", planKey);
+  stripeBody.set("subscription_data[metadata][mandys_interval]", interval);
+
+  const existingCustomer = checkoutData.subscription?.provider_customer_id;
+  if (typeof existingCustomer === "string" && existingCustomer.startsWith("cus_")) {
+    stripeBody.set("customer", existingCustomer);
+  } else if (ctx.email) {
+    stripeBody.set("customer_email", ctx.email);
+  }
+
+  appendPriceData(stripeBody, 0, {
+    currency: checkoutData.price.currency,
+    unitAmount: checkoutData.price.unitAmount,
+    interval,
+    name: `Mandy's ${checkoutData.price.displayName}`,
+  });
+
+  if (checkoutData.price.extraStaffCount > 0 && checkoutData.price.extraStaffUnitAmount > 0) {
+    appendPriceData(stripeBody, 1, {
+      currency: checkoutData.price.currency,
+      unitAmount: checkoutData.price.extraStaffUnitAmount,
+      interval,
+      name: "Mandy's additional active staff",
+      quantity: checkoutData.price.extraStaffCount,
+      unitLabel: "staff",
+    });
+  }
+
+  const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${stripeSecretKey}`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: stripeBody,
+  });
+  const stripeResult = (await stripeResponse.json().catch(() => null)) as Record<string, any> | null;
+  if (!stripeResponse.ok) {
+    console.error("Stripe checkout error", stripeResponse.status, stripeResult?.error?.type ?? "unknown");
+    return fail(502, "PAYMENT_PROVIDER_ERROR", "Subscription checkout could not be created");
+  }
+  const checkoutUrl = stripeResult?.url;
+  const sessionId = stripeResult?.id;
+  if (typeof checkoutUrl !== "string" || typeof sessionId !== "string") {
+    return fail(502, "PAYMENT_PROVIDER_ERROR", "Subscription checkout returned an invalid response");
+  }
+
+  await sql.begin(async (tx) => {
+    await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;
+    await tx`
+      insert into mandys.audit_logs (
+        organization_id,actor_user_id,action,entity_type,entity_id,metadata
+      ) values (
+        ${ctx.organizationId},${ctx.userId},'billing.checkout_created','tenant_subscription',
+        ${ctx.organizationId},${tx.json({ planKey, interval, sessionId })}
+      )
+    `;
+  });
+
+  return {
+    body: {
+      data: {
+        checkoutUrl,
+        sessionId,
+      },
+    },
+  };
+}
+
 Deno.serve(async (request) => {
   const url = new URL(request.url);
   if (
@@ -189,12 +415,14 @@ Deno.serve(async (request) => {
     const result =
       request.method === "GET" && path === "/v1/billing"
         ? await billing(ctxOrError)
-        : fail(404, "NOT_FOUND", "Route not found");
+        : request.method === "POST" && path === "/v1/checkout"
+          ? await checkout(ctxOrError, request)
+          : fail(404, "NOT_FOUND", "Route not found");
     return json(result.body, result.status ?? 200);
   } catch (error) {
     console.error("mandys-billing error", error instanceof Error ? error.message : String(error));
     return json(
-      { error: "INTERNAL_ERROR", message: "Subscription information could not be loaded" },
+      { error: "INTERNAL_ERROR", message: "Subscription operation could not be completed" },
       500,
     );
   }
