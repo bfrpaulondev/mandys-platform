@@ -29,8 +29,8 @@ async function deleteTenant(page) {
   });
 }
 
-test("Backoffice disposable owner can onboard, traverse private product areas, export and cleanly delete the tenant", async ({ page }) => {
-  test.setTimeout(120_000);
+test("Backoffice disposable owner can onboard, exercise private policy, export and cleanly delete the tenant", async ({ page }) => {
+  test.setTimeout(150_000);
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const email = `mandys-e2e-${unique}@example.com`;
   const password = `Mandy-E2E-${unique}!Aa9`;
@@ -136,6 +136,68 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
       expect(response?.status(), `${path} returned a server error`).toBeLessThan(500);
       await page.waitForTimeout(150);
       expect(page.url(), `${path} unexpectedly lost the authenticated session`).not.toContain("/login");
+    }
+
+    // Retention policy is owner-only, tenant-scoped and starts explicitly disabled.
+    const initialRetentionResponse = await page.request.get(
+      `${backofficeOrigin}/api/retention/v1/retention`,
+      { headers: { accept: "application/json" } },
+    );
+    expect(initialRetentionResponse.ok()).toBeTruthy();
+    const initialRetention = await initialRetentionResponse.json();
+    expect(initialRetention?.data).toEqual({
+      customerDataRetentionDays: null,
+      auditLogRetentionDays: null,
+      notificationRetentionDays: null,
+    });
+
+    const invalidRetentionResponse = await page.request.put(
+      `${backofficeOrigin}/api/retention/v1/retention`,
+      {
+        headers: { accept: "application/json", "content-type": "application/json" },
+        data: {
+          customerDataRetentionDays: 29,
+          auditLogRetentionDays: null,
+          notificationRetentionDays: null,
+        },
+      },
+    );
+    expect(invalidRetentionResponse.status()).toBe(400);
+    expect((await invalidRetentionResponse.json())?.error).toBe("INVALID_RETENTION_POLICY");
+
+    const expectedRetention = {
+      customerDataRetentionDays: 365,
+      auditLogRetentionDays: 730,
+      notificationRetentionDays: 90,
+    };
+    const updateRetentionResponse = await page.request.put(
+      `${backofficeOrigin}/api/retention/v1/retention`,
+      {
+        headers: { accept: "application/json", "content-type": "application/json" },
+        data: expectedRetention,
+      },
+    );
+    expect(updateRetentionResponse.ok()).toBeTruthy();
+    expect((await updateRetentionResponse.json())?.data).toEqual(expectedRetention);
+
+    const readbackRetentionResponse = await page.request.get(
+      `${backofficeOrigin}/api/retention/v1/retention`,
+      { headers: { accept: "application/json" } },
+    );
+    expect(readbackRetentionResponse.ok()).toBeTruthy();
+    expect((await readbackRetentionResponse.json())?.data).toEqual(expectedRetention);
+
+    // Regional price proposals live in a separate private table. Until commercial
+    // approval, the customer-facing billing contract must continue to expose no price.
+    const billingResponse = await page.request.get(`${backofficeOrigin}/api/billing/v1/billing`, {
+      headers: { accept: "application/json" },
+    });
+    expect(billingResponse.ok()).toBeTruthy();
+    const billing = await billingResponse.json();
+    expect(billing?.data?.plans?.length).toBeGreaterThanOrEqual(5);
+    for (const plan of billing.data.plans) {
+      expect(plan.monthlyPriceCents).toBeNull();
+      expect(plan.annualPriceCents).toBeNull();
     }
 
     const protectedAccountDelete = await deleteUser(page, password);
