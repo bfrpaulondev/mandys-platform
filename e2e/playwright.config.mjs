@@ -5,7 +5,12 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  retries: process.env.CI ? 1 : 0,
+  // Live E2E crosses Netlify and Supabase. Keep every functional assertion,
+  // but give isolated worker retries enough room to recover from transient
+  // transport resets or a one-off hydration navigation without contaminating
+  // later tests in the suite.
+  retries: process.env.CI ? 2 : 0,
+  retryStrategy: "isolated",
   workers: 1,
   reporter: [
     ["line"],
