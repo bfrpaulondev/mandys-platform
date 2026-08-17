@@ -20,6 +20,6 @@ jobs:
           npm install --no-save @playwright/test@1.55.0
           npx playwright install --with-deps chromium
       - name: Run live browser tests
-        run: npx playwright test .github/e2e/netlify-live.spec.ts --project=chromium --reporter=line
+        run: npx playwright test .github/e2e/netlify-live.spec.ts --reporter=line
         env:
           CI: true
