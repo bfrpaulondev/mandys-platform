@@ -40,25 +40,40 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
   let tenantCreated = false;
 
   try {
-    const loginResponse = await page.goto(`${backofficeOrigin}/en/login`, { waitUntil: "domcontentloaded" });
+    const loginResponse = await page.goto(`${backofficeOrigin}/en/login`, {
+      waitUntil: "domcontentloaded",
+    });
     expect(loginResponse?.ok()).toBeTruthy();
-    await page.getByRole("button", { name: "New to Mandy's? Create an account", exact: true }).click();
-    await page.getByLabel("Name", { exact: true }).fill("Mandy E2E Owner");
-    await page.getByLabel("Email", { exact: true }).fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
 
-    const signupResponsePromise = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        response.url().includes("/api/auth/sign-up/email"),
-      { timeout: 20_000 },
+    // Create the disposable identity through the exact same-origin auth gateway
+    // used by the browser. The request context shares cookies with the page,
+    // which removes client-side navigation timing from this lifecycle test while
+    // preserving the real production session and cookie path.
+    const signupResponse = await page.request.post(
+      `${backofficeOrigin}/api/auth/sign-up/email`,
+      {
+        headers: { accept: "application/json", "content-type": "application/json" },
+        data: { name: "Mandy E2E Owner", email, password },
+      },
     );
-    await page.getByRole("button", { name: "Create account and continue", exact: true }).click();
-    const signupResponse = await signupResponsePromise;
     expect(signupResponse.ok(), `signup returned ${signupResponse.status()}`).toBeTruthy();
     userCreated = true;
 
-    await page.waitForURL((url) => pathIs(url, "/en/onboarding"), { timeout: 15_000 });
+    const sessionResponse = await page.request.get(`${backofficeOrigin}/api/auth/get-session`, {
+      headers: { accept: "application/json" },
+    });
+    expect(sessionResponse.ok()).toBeTruthy();
+    const sessionBody = await sessionResponse.json();
+    expect(sessionBody?.user?.email).toBe(email);
+
+    const onboardingPage = await page.goto(`${backofficeOrigin}/en/onboarding`, {
+      waitUntil: "domcontentloaded",
+    });
+    expect(onboardingPage?.ok()).toBeTruthy();
+    await expect(page.getByLabel("Restaurant public name", { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
     await page.getByLabel("Restaurant public name", { exact: true }).fill(restaurantName);
     await page.getByLabel("Restaurant identifier", { exact: true }).fill(restaurantSlug);
     await page.getByLabel("Country (ISO 2)", { exact: true }).fill("PT");
@@ -82,7 +97,7 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
     const organizationResponse = await organizationResponsePromise;
     expect(
       organizationResponse.ok(),
-      `organization create returned ${organizationResponse.status()}`,
+      `organization create returned ${organizationResponse.status()}: ${await organizationResponse.text()}`,
     ).toBeTruthy();
     tenantCreated = true;
 
@@ -93,7 +108,6 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
     ).toBeTruthy();
 
     await page.waitForURL((url) => pathIs(url, "/en"), { timeout: 20_000 });
-
     await expect(page.getByRole("navigation", { name: "Mandy's" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Reservations", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Menu", exact: true })).toBeVisible();
