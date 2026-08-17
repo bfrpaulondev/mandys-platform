@@ -134,7 +134,7 @@ for (const role of ["owner", "manager", "reception", "kitchen", "staff", "market
 
 const assignable = variableInitializer(teamFile, "assignableRoles");
 let assignableArray = assignable;
-if (ts.isAsExpression(assignable) || ts.isSatisfiesExpression(assignable)) assignableArray = assignable.expression;
+if (ts.isAsExpression(assignable)) assignableArray = assignable.expression;
 if (!ts.isArrayLiteralExpression(assignableArray)) {
   throw new Error("assignableRoles must remain a literal array");
 }
