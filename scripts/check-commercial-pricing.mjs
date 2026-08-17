@@ -2,14 +2,20 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-const migrationPath = path.resolve(
-  process.cwd(),
+const migrationFiles = [
   "packages/database/sql/0010_regional_plan_prices.sql",
+  "packages/database/sql/0012_regional_plan_prices_wave2.sql",
+];
+const sources = await Promise.all(
+  migrationFiles.map((file) => readFile(path.resolve(process.cwd(), file), "utf8")),
 );
-const source = await readFile(migrationPath, "utf8");
+const source = sources.join("\n");
 
 const plans = ["start", "grow", "operate", "intelligence", "multi"];
-const markets = ["PT", "ES", "US", "BR", "IN", "GB", "CA", "AU", "MX"];
+const markets = [
+  "PT", "ES", "US", "BR", "IN", "GB", "CA", "AU", "MX",
+  "IE", "JP", "SG", "NZ", "AE", "ZA", "PE",
+];
 const includedStaff = new Map([
   ["start", 5],
   ["grow", 15],
@@ -61,8 +67,10 @@ for (const country of markets) {
   }
 }
 
-if (!/on conflict[\s\S]*is_public=false/i.test(source)) {
-  failures.push("upsert must force draft regional prices back to is_public=false");
+for (const [index, file] of migrationFiles.entries()) {
+  if (!/on conflict[\s\S]*is_public=false/i.test(sources[index])) {
+    failures.push(`${file} upsert must force draft regional prices back to is_public=false`);
+  }
 }
 
 if (failures.length > 0) {
