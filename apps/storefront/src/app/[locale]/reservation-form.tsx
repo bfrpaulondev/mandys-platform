@@ -3,7 +3,10 @@
 import type { Locale } from "@mandys/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { createReservationTimeFormatter } from "../../lib/reservation-time";
+import {
+  createReservationTimeFormatter,
+  restaurantDateInputValue,
+} from "../../lib/reservation-time";
 
 type Slot = { startsAt: string; endsAt: string; available: boolean; remainingCapacity: number };
 type AvailabilityResponse = { data: { timezone: string; durationMinutes: number; slots: Slot[] } };
@@ -39,18 +42,20 @@ const copy = {
 
 const fieldClassName = "mt-1.5 min-h-12 w-full rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] bg-[var(--mandys-background)] px-3 text-[var(--mandys-foreground)] outline-none focus:ring-2 focus:ring-[var(--mandys-accent)]";
 
-function dateInputValue(offsetDays = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() + offsetDays);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-export function ReservationForm({ locale, disabled }: { locale: Locale; disabled: boolean }) {
+export function ReservationForm({
+  locale,
+  disabled,
+  restaurantTimezone,
+}: {
+  locale: Locale;
+  disabled: boolean;
+  restaurantTimezone: string;
+}) {
   const c = copy[locale];
   const formRef = useRef<HTMLFormElement>(null);
-  const [date, setDate] = useState(dateInputValue(1));
+  const [timezone, setTimezone] = useState(restaurantTimezone);
+  const [date, setDate] = useState(() => restaurantDateInputValue(restaurantTimezone, 1));
   const [partySize, setPartySize] = useState(2);
-  const [timezone, setTimezone] = useState("UTC");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotLoading, setSlotLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -60,6 +65,8 @@ export function ReservationForm({ locale, disabled }: { locale: Locale; disabled
     () => createReservationTimeFormatter(locale, timezone),
     [locale, timezone],
   );
+  const minimumDate = useMemo(() => restaurantDateInputValue(timezone), [timezone]);
+  const maximumDate = useMemo(() => restaurantDateInputValue(timezone, 365), [timezone]);
 
   useEffect(() => {
     if (disabled || !date || partySize < 1) return;
@@ -125,7 +132,7 @@ export function ReservationForm({ locale, disabled }: { locale: Locale; disabled
     <form ref={formRef} action={submit} data-testid="storefront-reservation-form" className="grid gap-4 sm:grid-cols-2">
       <label className="block text-sm font-medium">{c.name}<input name="guestName" autoComplete="name" data-testid="reservation-guest-name" required minLength={2} maxLength={120} disabled={disabled} className={fieldClassName} /></label>
       <label className="block text-sm font-medium">{c.guests}<input name="partySize" data-testid="reservation-party-size" type="number" min={1} max={100} value={partySize} onChange={event => setPartySize(Math.max(1, Math.min(100, Number(event.target.value) || 1)))} required disabled={disabled} className={fieldClassName} /></label>
-      <label className="block text-sm font-medium">{c.date}<input name="date" data-testid="reservation-date" type="date" min={dateInputValue()} max={dateInputValue(365)} value={date} onChange={event => setDate(event.target.value)} required disabled={disabled} className={fieldClassName} /></label>
+      <label className="block text-sm font-medium">{c.date}<input name="date" data-testid="reservation-date" type="date" min={minimumDate} max={maximumDate} value={date} onChange={event => setDate(event.target.value)} required disabled={disabled} className={fieldClassName} /></label>
       <label className="block text-sm font-medium">{c.time}
         <select name="startsAt" data-testid="reservation-starts-at" required disabled={disabled || slotLoading || slots.length === 0} className={fieldClassName} defaultValue="">
           <option value="">{slotLoading ? c.loading : c.choose}</option>
