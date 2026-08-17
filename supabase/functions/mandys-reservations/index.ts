@@ -6,408 +6,48 @@ const authSessionUrl = `${projectUrl}/functions/v1/mandys-auth/api/auth/get-sess
 const connectionString = Deno.env.get("SUPABASE_DB_URL");
 if (!connectionString) throw new Error("SUPABASE_DB_URL is required");
 
-const sql = postgres(connectionString, {
-  prepare: false,
-  max: 2,
-  idle_timeout: 20,
-  connect_timeout: 10,
-  connection: { application_name: "mandys-reservations-edge", search_path: "mandys,public" },
-});
+const sql = postgres(connectionString, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, connection: { application_name: "mandys-reservations-edge", search_path: "mandys,public" } });
 
 type Context = { userId: string; organizationId: string; role: string };
 type Result = { status?: number; body: unknown };
 type Slot = { startsAt: string; endsAt: string; available: boolean; remainingCapacity: number };
+type Config = { locationId: string; locationName: string; timezone: string; durationMinutes: number; intervalMinutes: number; minimumNoticeMinutes: number; maximumAdvanceDays: number; maximumPartySize: number; waitlistEnabled: boolean };
 
-const transitions: Record<string, string[]> = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["seated", "cancelled", "no_show"],
-  seated: ["completed"],
-  completed: [],
-  cancelled: [],
-  no_show: [],
-};
+const reservationTransitions: Record<string, string[]> = { pending: ["confirmed", "cancelled"], confirmed: ["seated", "cancelled", "no_show"], seated: ["completed"], completed: [], cancelled: [], no_show: [] };
+const waitlistStatuses = new Set(["waiting", "contacted", "converted", "cancelled", "expired"]);
+function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } }); }
+function fail(status: number, error: string, message: string): Result { return { status, body: { error, message } }; }
+function isUuid(value: unknown): value is string { return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
+function text(value: unknown, min: number, max: number): string | null { if (typeof value !== "string") return null; const next = value.trim(); return next.length >= min && next.length <= max ? next : null; }
+function email(value: unknown): string | null { if (value === undefined || value === null || value === "") return null; if (typeof value !== "string") return null; const next = value.trim().toLowerCase(); return next.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next) ? next : null; }
+function validDate(value: unknown): value is string { return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value); }
+function validTime(value: unknown): value is string { return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value); }
+function integer(value: unknown, min: number, max: number): number | null { const next = Number(value); return Number.isInteger(next) && next >= min && next <= max ? next : null; }
+function allowedOrigin(origin: string | null): boolean { if (!origin) return true; try { const url = new URL(origin); if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return true; if (url.protocol !== "https:") return false; return url.hostname === "mandys.pt" || url.hostname.endsWith(".mandys.pt") || url.hostname.endsWith(".vercel.app") || url.hostname.endsWith(".netlify.app"); } catch { return false; } }
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
-    },
-  });
-}
+async function context(request: Request): Promise<Context | Result> { const cookie = request.headers.get("cookie"); if (!cookie) return fail(401,"UNAUTHENTICATED","Authentication is required"); const response = await fetch(authSessionUrl,{headers:{cookie,accept:"application/json"},cache:"no-store"}); if(!response.ok) return fail(401,"UNAUTHENTICATED","Session is invalid or expired"); const body = await response.json().catch(()=>null) as any; const userId=body?.user?.id; const organizationId=body?.session?.activeOrganizationId; if(typeof userId!=="string"||typeof organizationId!=="string") return fail(401,"TENANT_CONTEXT_REQUIRED","Select an active restaurant organization"); const members=await sql<{role:string}[]>`select role from mandys.member where organization_id=${organizationId} and user_id=${userId} limit 1`; const role=members[0]?.role; if(!role) return fail(403,"FORBIDDEN","Organization membership is required"); return {userId,organizationId,role}; }
+function canRead(ctx:Context){return ["owner","manager","reception","kitchen","staff"].includes(ctx.role);}
+function canOperate(ctx:Context){return ["owner","manager","reception"].includes(ctx.role);}
+function canConfigure(ctx:Context){return ["owner","manager"].includes(ctx.role);}
+async function assertEnabled(tx:any,ctx:Context){const rows=await tx<any[]>`select status from mandys.module_entitlements where organization_id=${ctx.organizationId} and module_key='reservations' limit 1`;if(!rows[0]||rows[0].status==="disabled")throw new Error("RESERVATIONS_DISABLED");}
+async function audit(tx:any,ctx:Context,action:string,entityType:string,entityId:string|null,metadata:Record<string,unknown>){await tx`insert into mandys.audit_logs (organization_id,actor_user_id,action,entity_type,entity_id,metadata) values (${ctx.organizationId},${ctx.userId},${action},${entityType},${entityId},${tx.json(metadata)})`;}
 
-function fail(status: number, error: string, message: string): Result {
-  return { status, body: { error, message } };
-}
+async function getConfig(tx:any,ctx:Context,locationId?:string|null):Promise<Config|null>{const locationRows=locationId?await tx<any[]>`select id,name from mandys.locations where organization_id=${ctx.organizationId} and id=${locationId}::uuid and is_active=true limit 1`:await tx<any[]>`select id,name from mandys.locations where organization_id=${ctx.organizationId} and is_active=true order by created_at asc limit 1`;const location=locationRows[0];if(!location)return null;const [settingsRows,profileRows]=await Promise.all([tx<any[]>`select timezone from mandys.tenant_settings where organization_id=${ctx.organizationId} limit 1`,tx<any[]>`select reservation_duration_minutes,booking_interval_minutes,minimum_booking_notice_minutes,maximum_booking_advance_days,maximum_party_size,waitlist_enabled from mandys.restaurant_profiles where organization_id=${ctx.organizationId} and location_id=${location.id}::uuid limit 1`]);const profile=profileRows[0]??{};return{locationId:location.id,locationName:location.name,timezone:settingsRows[0]?.timezone??"Europe/Lisbon",durationMinutes:Math.max(30,Math.min(360,Number(profile.reservation_duration_minutes??90))),intervalMinutes:[15,30,60].includes(Number(profile.booking_interval_minutes))?Number(profile.booking_interval_minutes):30,minimumNoticeMinutes:Math.max(0,Math.min(10080,Number(profile.minimum_booking_notice_minutes??60))),maximumAdvanceDays:Math.max(1,Math.min(365,Number(profile.maximum_booking_advance_days??90))),maximumPartySize:Math.max(1,Math.min(100,Number(profile.maximum_party_size??12))),waitlistEnabled:profile.waitlist_enabled!==false};}
+async function dateAllowed(tx:any,cfg:Config,localDate:string){const rows=await tx<any[]>`select ${localDate}::date >= (now() at time zone ${cfg.timezone})::date as not_past, ${localDate}::date <= ((now() at time zone ${cfg.timezone})::date + ${cfg.maximumAdvanceDays}::int) as within_advance`;return Boolean(rows[0]?.not_past&&rows[0]?.within_advance);}
+async function openingBounds(tx:any,organizationId:string,cfg:Config,localDate:string){const exceptionRows=await tx<any[]>`select is_closed,opens_at::text,closes_at::text from mandys.reservation_exceptions where organization_id=${organizationId} and location_id=${cfg.locationId}::uuid and service_date=${localDate}::date limit 1`;const exception=exceptionRows[0];if(exception?.is_closed)return null;if(exception&&exception.opens_at&&exception.closes_at){const rows=await tx<any[]>`select ((${localDate}::date + ${exception.opens_at}::time) at time zone ${cfg.timezone}) as open_at, (((${localDate}::date + ${exception.closes_at}::time) + case when ${exception.closes_at}::time <= ${exception.opens_at}::time then interval '1 day' else interval '0 day' end) at time zone ${cfg.timezone}) as close_at`;return{openAt:new Date(rows[0].open_at),closeAt:new Date(rows[0].close_at)};}const rows=await tx<any[]>`with day_info as (select extract(dow from ${localDate}::date)::int as weekday), hours as (select oh.opens_at,oh.closes_at,oh.is_closed from mandys.opening_hours oh,day_info d where oh.organization_id=${organizationId} and oh.location_id=${cfg.locationId}::uuid and oh.weekday=d.weekday limit 1) select is_closed, case when is_closed or opens_at is null or closes_at is null then null else ((${localDate}::date + opens_at::time) at time zone ${cfg.timezone}) end as open_at, case when is_closed or opens_at is null or closes_at is null then null else (((${localDate}::date + closes_at::time) + case when closes_at::time <= opens_at::time then interval '1 day' else interval '0 day' end) at time zone ${cfg.timezone}) end as close_at from hours`;const row=rows[0];if(!row||row.is_closed||!row.open_at||!row.close_at)return null;return{openAt:new Date(row.open_at),closeAt:new Date(row.close_at)};}
+async function calculateSlots(tx:any,ctx:Context,cfg:Config,localDate:string,partySize:number):Promise<Slot[]>{if(partySize>cfg.maximumPartySize||!(await dateAllowed(tx,cfg,localDate)))return[];const bounds=await openingBounds(tx,ctx.organizationId,cfg,localDate);if(!bounds)return[];const tables=await tx<any[]>`select id,max_seats from mandys.restaurant_tables where organization_id=${ctx.organizationId} and location_id=${cfg.locationId}::uuid and is_active=true order by max_seats asc,created_at asc`;if(tables.length===0||!tables.some((table:any)=>Number(table.max_seats)>=partySize))return[];const reservations=await tx<any[]>`select table_id,starts_at,ends_at,party_size from mandys.reservations where organization_id=${ctx.organizationId} and location_id=${cfg.locationId}::uuid and status in ('pending','confirmed','seated') and starts_at < ${bounds.closeAt.toISOString()}::timestamptz and ends_at > ${bounds.openAt.toISOString()}::timestamptz`;const totalCapacity=tables.reduce((sum:number,table:any)=>sum+Number(table.max_seats),0);const slots:Slot[]=[];const stepMs=cfg.intervalMinutes*60000;const durationMs=cfg.durationMinutes*60000;const minimumStart=Date.now()+cfg.minimumNoticeMinutes*60000;for(let at=bounds.openAt.getTime();at+durationMs<=bounds.closeAt.getTime();at+=stepMs){const startsAt=new Date(at);const endsAt=new Date(at+durationMs);if(startsAt.getTime()<minimumStart)continue;const overlapping=reservations.filter((row:any)=>new Date(row.starts_at).getTime()<endsAt.getTime()&&new Date(row.ends_at).getTime()>startsAt.getTime());const occupied=new Set(overlapping.map((row:any)=>row.table_id).filter(Boolean));const reservedCapacity=overlapping.reduce((sum:number,row:any)=>sum+Number(row.party_size),0);const remainingCapacity=Math.max(0,totalCapacity-reservedCapacity);const hasFittingTable=tables.some((table:any)=>!occupied.has(table.id)&&Number(table.max_seats)>=partySize);slots.push({startsAt:startsAt.toISOString(),endsAt:endsAt.toISOString(),available:hasFittingTable&&remainingCapacity>=partySize,remainingCapacity});}return slots;}
 
-function isUuid(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
+async function availability(ctx:Context,url:URL):Promise<Result>{if(!canRead(ctx))return fail(403,"FORBIDDEN","Your role cannot access reservations");const localDate=url.searchParams.get("date")??"";const partySize=Number(url.searchParams.get("partySize")??2);const locationId=url.searchParams.get("locationId");if(!validDate(localDate)||!Number.isInteger(partySize)||partySize<1||partySize>100||(locationId&&!isUuid(locationId)))return fail(400,"INVALID_QUERY","Availability query is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);const cfg=await getConfig(tx,ctx,locationId);if(!cfg)return fail(404,"LOCATION_NOT_FOUND","Restaurant location is not available");const slots=await calculateSlots(tx,ctx,cfg,localDate,partySize);return{body:{data:{...cfg,slots}}};}).catch(error=>String(error).includes("RESERVATIONS_DISABLED")?fail(403,"RESERVATIONS_DISABLED","The reservations module is not enabled"):Promise.reject(error));}
+async function listReservations(ctx:Context,url:URL):Promise<Result>{if(!canRead(ctx))return fail(403,"FORBIDDEN","Your role cannot access reservations");const locationId=url.searchParams.get("locationId");const fromRaw=url.searchParams.get("from");const toRaw=url.searchParams.get("to");const limit=Math.min(200,Math.max(1,Number(url.searchParams.get("limit")??100)));if((locationId&&!isUuid(locationId))||!Number.isInteger(limit))return fail(400,"INVALID_QUERY","Reservation filters are invalid");const from=fromRaw?new Date(fromRaw):null;const to=toRaw?new Date(toRaw):null;if((from&&!Number.isFinite(from.getTime()))||(to&&!Number.isFinite(to.getTime()))||(from&&to&&to<=from))return fail(400,"INVALID_QUERY","Reservation date filters are invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);const rows=await tx<any[]>`select r.id,r.location_id,r.customer_id,r.dining_area_id,r.table_id,r.guest_name,r.guest_email,r.guest_phone,r.starts_at,r.ends_at,r.party_size,r.status,r.notes,r.source,r.created_at,r.updated_at,t.name as table_name,a.name as dining_area_name from mandys.reservations r left join mandys.restaurant_tables t on t.organization_id=r.organization_id and t.id=r.table_id left join mandys.dining_areas a on a.organization_id=r.organization_id and a.id=r.dining_area_id where r.organization_id=${ctx.organizationId} and (${locationId}::text is null or r.location_id=${locationId}::uuid) and (${from?from.toISOString():null}::timestamptz is null or r.ends_at>${from?from.toISOString():null}::timestamptz) and (${to?to.toISOString():null}::timestamptz is null or r.starts_at<${to?to.toISOString():null}::timestamptz) order by r.starts_at asc limit ${limit}`;return{body:{data:rows.map((row:any)=>({id:row.id,locationId:row.location_id,customerId:row.customer_id,diningAreaId:row.dining_area_id,diningAreaName:row.dining_area_name,tableId:row.table_id,tableName:row.table_name,guestName:row.guest_name,guestEmail:row.guest_email,guestPhone:row.guest_phone,startsAt:new Date(row.starts_at).toISOString(),endsAt:new Date(row.ends_at).toISOString(),partySize:row.party_size,status:row.status,notes:row.notes,source:row.source,createdAt:new Date(row.created_at).toISOString(),updatedAt:new Date(row.updated_at).toISOString()}))}};}).catch(error=>String(error).includes("RESERVATIONS_DISABLED")?fail(403,"RESERVATIONS_DISABLED","The reservations module is not enabled"):Promise.reject(error));}
 
-function text(value: unknown, min: number, max: number): string | null {
-  if (typeof value !== "string") return null;
-  const next = value.trim();
-  return next.length >= min && next.length <= max ? next : null;
-}
+async function createReservation(ctx:Context,body:any):Promise<Result>{if(!canOperate(ctx))return fail(403,"FORBIDDEN","Your role cannot create reservations");const locationId=body?.locationId;const guestName=text(body?.guestName,2,120);const guestEmail=email(body?.guestEmail);const guestPhone=body?.guestPhone?text(body.guestPhone,1,40):null;const notes=body?.notes?text(body.notes,1,2000):null;const startsAt=new Date(body?.startsAt);const partySize=Number(body?.partySize);const requestedTableId=body?.tableId??null;if(!isUuid(locationId)||!guestName||!Number.isFinite(startsAt.getTime())||!Number.isInteger(partySize)||partySize<1||partySize>100||(body?.guestEmail&&!guestEmail)||(body?.guestPhone&&!guestPhone)||(requestedTableId&&!isUuid(requestedTableId)))return fail(400,"INVALID_REQUEST","Reservation data is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);await tx`select pg_advisory_xact_lock(hashtext(${ctx.organizationId}),hashtext(${locationId}))`;const cfg=await getConfig(tx,ctx,locationId);if(!cfg)return fail(404,"LOCATION_NOT_FOUND","Restaurant location is not available");if(partySize>cfg.maximumPartySize)return fail(422,"PARTY_TOO_LARGE",`Maximum online party size is ${cfg.maximumPartySize}`);if(startsAt.getTime()<Date.now()+cfg.minimumNoticeMinutes*60000)return fail(409,"SLOT_UNAVAILABLE","The booking does not meet the minimum notice period");const localRows=await tx<any[]>`select to_char(${startsAt.toISOString()}::timestamptz at time zone ${cfg.timezone},'YYYY-MM-DD') as local_date,extract(minute from ${startsAt.toISOString()}::timestamptz at time zone ${cfg.timezone})::int as minute,extract(second from ${startsAt.toISOString()}::timestamptz at time zone ${cfg.timezone})::int as second`;const localDate=localRows[0]?.local_date as string;if(!(await dateAllowed(tx,cfg,localDate)))return fail(409,"SLOT_UNAVAILABLE","The booking date is outside the allowed booking window");if(Number(localRows[0]?.second??1)!==0||Number(localRows[0]?.minute??0)%cfg.intervalMinutes!==0)return fail(422,"INVALID_SLOT",`Reservations must start on a ${cfg.intervalMinutes}-minute slot`);const bounds=await openingBounds(tx,ctx.organizationId,cfg,localDate);const endsAt=new Date(startsAt.getTime()+cfg.durationMinutes*60000);if(!bounds||startsAt<bounds.openAt||endsAt>bounds.closeAt)return fail(409,"SLOT_UNAVAILABLE","The restaurant is closed at the selected time");const tables=await tx<any[]>`select id,dining_area_id,max_seats from mandys.restaurant_tables where organization_id=${ctx.organizationId} and location_id=${locationId}::uuid and is_active=true order by max_seats asc,created_at asc`;const overlapping=await tx<any[]>`select table_id,party_size from mandys.reservations where organization_id=${ctx.organizationId} and location_id=${locationId}::uuid and status in ('pending','confirmed','seated') and starts_at<${endsAt.toISOString()}::timestamptz and ends_at>${startsAt.toISOString()}::timestamptz`;const totalCapacity=tables.reduce((sum:number,table:any)=>sum+Number(table.max_seats),0);const reservedCapacity=overlapping.reduce((sum:number,row:any)=>sum+Number(row.party_size),0);const occupied=new Set(overlapping.map((row:any)=>row.table_id).filter(Boolean));const table=requestedTableId?tables.find((row:any)=>row.id===requestedTableId&&Number(row.max_seats)>=partySize&&!occupied.has(row.id)):tables.find((row:any)=>Number(row.max_seats)>=partySize&&!occupied.has(row.id));if(!table||totalCapacity===0||reservedCapacity+partySize>totalCapacity)return fail(409,"SLOT_UNAVAILABLE","No suitable table is available for this time");let customerId:string|null=null;if(guestEmail||guestPhone){const existing=guestEmail?await tx<any[]>`select id from mandys.customers where organization_id=${ctx.organizationId} and lower(email)=${guestEmail} limit 1`:await tx<any[]>`select id from mandys.customers where organization_id=${ctx.organizationId} and phone=${guestPhone} limit 1`;customerId=existing[0]?.id??null;}if(!customerId){const parts=guestName.split(/\s+/);const firstName=parts.shift()??guestName;const lastName=parts.join(" ")||null;const customer=await tx<any[]>`insert into mandys.customers (organization_id,first_name,last_name,email,phone) values (${ctx.organizationId},${firstName},${lastName},${guestEmail},${guestPhone}) returning id`;customerId=customer[0]?.id??null;}const rows=await tx<any[]>`insert into mandys.reservations (organization_id,location_id,customer_id,dining_area_id,table_id,guest_name,guest_email,guest_phone,starts_at,ends_at,party_size,status,notes,source) values (${ctx.organizationId},${locationId}::uuid,${customerId}::uuid,${table.dining_area_id}::uuid,${table.id}::uuid,${guestName},${guestEmail},${guestPhone},${startsAt.toISOString()}::timestamptz,${endsAt.toISOString()}::timestamptz,${partySize},'pending',${notes},'backoffice') returning id,starts_at,ends_at,status`;const created=rows[0];await audit(tx,ctx,"reservation.created","reservation",created.id,{locationId,tableId:table.id,partySize,startsAt:startsAt.toISOString()});return{status:201,body:{data:{id:created.id,startsAt:new Date(created.starts_at).toISOString(),endsAt:new Date(created.ends_at).toISOString(),partySize,status:created.status,tableId:table.id}}};}).catch(error=>String(error).includes("RESERVATIONS_DISABLED")?fail(403,"RESERVATIONS_DISABLED","The reservations module is not enabled"):Promise.reject(error));}
+async function changeReservationStatus(ctx:Context,reservationId:string,body:any):Promise<Result>{if(!canOperate(ctx))return fail(403,"FORBIDDEN","Your role cannot update reservations");const status=typeof body?.status==="string"?body.status:"";if(!isUuid(reservationId)||!Object.hasOwn(reservationTransitions,status))return fail(400,"INVALID_REQUEST","Reservation status update is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);const currentRows=await tx<any[]>`select id,status from mandys.reservations where organization_id=${ctx.organizationId} and id=${reservationId}::uuid limit 1`;const current=currentRows[0];if(!current)return fail(404,"NOT_FOUND","Reservation not found");if(current.status===status)return{body:{data:{id:reservationId,status}}};if(!(reservationTransitions[current.status]??[]).includes(status))return fail(422,"INVALID_TRANSITION",`Reservation status cannot transition from ${current.status} to ${status}`);const updated=await tx<any[]>`update mandys.reservations set status=${status}::mandys.reservation_status,updated_at=now() where organization_id=${ctx.organizationId} and id=${reservationId}::uuid and status=${current.status}::mandys.reservation_status returning id,status`;if(!updated[0])return fail(409,"CONCURRENT_UPDATE","Reservation was updated by another request");await audit(tx,ctx,"reservation.status_changed","reservation",reservationId,{from:current.status,to:status});return{body:{data:{id:reservationId,status}}};}).catch(error=>String(error).includes("RESERVATIONS_DISABLED")?fail(403,"RESERVATIONS_DISABLED","The reservations module is not enabled"):Promise.reject(error));}
 
-function email(value: unknown): string | null {
-  if (value === undefined || value === null || value === "") return null;
-  if (typeof value !== "string") return null;
-  const next = value.trim().toLowerCase();
-  return next.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next) ? next : null;
-}
+async function getPolicies(ctx:Context):Promise<Result>{if(!canRead(ctx))return fail(403,"FORBIDDEN","Your role cannot access reservation policies");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);const cfg=await getConfig(tx,ctx);if(!cfg)return fail(404,"LOCATION_NOT_FOUND","Restaurant location is not available");const exceptions=await tx<any[]>`select id,service_date::text,is_closed,opens_at::text,closes_at::text,note from mandys.reservation_exceptions where organization_id=${ctx.organizationId} and location_id=${cfg.locationId}::uuid and service_date >= (now() at time zone ${cfg.timezone})::date order by service_date asc limit 120`;return{body:{data:{...cfg,exceptions:exceptions.map((row:any)=>({id:row.id,date:row.service_date,isClosed:row.is_closed,opensAt:row.opens_at?.slice(0,5)??null,closesAt:row.closes_at?.slice(0,5)??null,note:row.note}))}}};}).catch(error=>String(error).includes("RESERVATIONS_DISABLED")?fail(403,"RESERVATIONS_DISABLED","The reservations module is not enabled"):Promise.reject(error));}
+async function updatePolicies(ctx:Context,body:any):Promise<Result>{if(!canConfigure(ctx))return fail(403,"FORBIDDEN","Only owners and managers can change reservation policies");const durationMinutes=integer(body?.durationMinutes,30,360);const intervalMinutes=integer(body?.intervalMinutes,15,60);const minimumNoticeMinutes=integer(body?.minimumNoticeMinutes,0,10080);const maximumAdvanceDays=integer(body?.maximumAdvanceDays,1,365);const maximumPartySize=integer(body?.maximumPartySize,1,100);const waitlistEnabled=typeof body?.waitlistEnabled==="boolean"?body.waitlistEnabled:null;if(durationMinutes===null||![15,30,60].includes(intervalMinutes??-1)||minimumNoticeMinutes===null||maximumAdvanceDays===null||maximumPartySize===null||waitlistEnabled===null)return fail(400,"INVALID_REQUEST","Reservation policy data is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);const cfg=await getConfig(tx,ctx);if(!cfg)return fail(404,"LOCATION_NOT_FOUND","Restaurant location is not available");await tx`update mandys.restaurant_profiles set reservation_duration_minutes=${durationMinutes},booking_interval_minutes=${intervalMinutes},minimum_booking_notice_minutes=${minimumNoticeMinutes},maximum_booking_advance_days=${maximumAdvanceDays},maximum_party_size=${maximumPartySize},waitlist_enabled=${waitlistEnabled},updated_at=now() where organization_id=${ctx.organizationId} and location_id=${cfg.locationId}::uuid`;await audit(tx,ctx,"reservation.policy_updated","restaurant_profile",cfg.locationId,{durationMinutes,intervalMinutes,minimumNoticeMinutes,maximumAdvanceDays,maximumPartySize,waitlistEnabled});return{body:{data:{saved:true}}};}).catch(error=>String(error).includes("RESERVATIONS_DISABLED")?fail(403,"RESERVATIONS_DISABLED","The reservations module is not enabled"):Promise.reject(error));}
+async function saveException(ctx:Context,body:any):Promise<Result>{if(!canConfigure(ctx))return fail(403,"FORBIDDEN","Only owners and managers can change special opening days");const date=body?.date;const isClosed=body?.isClosed===true;const opensAt=isClosed?null:body?.opensAt;const closesAt=isClosed?null:body?.closesAt;const note=body?.note?text(body.note,1,500):null;if(!validDate(date)||(!isClosed&&(!validTime(opensAt)||!validTime(closesAt)||opensAt===closesAt))||(body?.note&&!note))return fail(400,"INVALID_REQUEST","Special-day data is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);const cfg=await getConfig(tx,ctx);if(!cfg)return fail(404,"LOCATION_NOT_FOUND","Restaurant location is not available");const rows=await tx<any[]>`insert into mandys.reservation_exceptions (organization_id,location_id,service_date,is_closed,opens_at,closes_at,note) values (${ctx.organizationId},${cfg.locationId}::uuid,${date}::date,${isClosed},${opensAt},${closesAt},${note}) on conflict (location_id,service_date) do update set is_closed=excluded.is_closed,opens_at=excluded.opens_at,closes_at=excluded.closes_at,note=excluded.note,updated_at=now() returning id`;await audit(tx,ctx,"reservation.exception_saved","reservation_exception",rows[0].id,{date,isClosed,opensAt,closesAt});return{status:201,body:{data:{id:rows[0].id}}};}).catch(error=>String(error).includes("RESERVATIONS_DISABLED")?fail(403,"RESERVATIONS_DISABLED","The reservations module is not enabled"):Promise.reject(error));}
+async function deleteException(ctx:Context,exceptionId:string):Promise<Result>{if(!canConfigure(ctx))return fail(403,"FORBIDDEN","Only owners and managers can change special opening days");if(!isUuid(exceptionId))return fail(400,"INVALID_REQUEST","Special-day id is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;const rows=await tx<any[]>`delete from mandys.reservation_exceptions where organization_id=${ctx.organizationId} and id=${exceptionId}::uuid returning id,service_date::text`;if(!rows[0])return fail(404,"NOT_FOUND","Special day not found");await audit(tx,ctx,"reservation.exception_deleted","reservation_exception",exceptionId,{date:rows[0].service_date});return{body:{data:{deleted:true}}};});}
+async function listWaitlist(ctx:Context,url:URL):Promise<Result>{if(!canOperate(ctx))return fail(403,"FORBIDDEN","Your role cannot access the waitlist");const status=url.searchParams.get("status");if(status&&!waitlistStatuses.has(status))return fail(400,"INVALID_QUERY","Waitlist status is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;const rows=await tx<any[]>`select id,requested_date::text,preferred_starts_at::text,preferred_ends_at::text,party_size,guest_name,guest_email,guest_phone,notes,status,source,created_at,updated_at from mandys.reservation_waitlist where organization_id=${ctx.organizationId} and (${status}::text is null or status=${status}) order by case when status='waiting' then 0 when status='contacted' then 1 else 2 end,requested_date asc,created_at asc limit 200`;return{body:{data:rows.map((row:any)=>({id:row.id,requestedDate:row.requested_date,preferredStartsAt:row.preferred_starts_at?.slice(0,5)??null,preferredEndsAt:row.preferred_ends_at?.slice(0,5)??null,partySize:row.party_size,guestName:row.guest_name,guestEmail:row.guest_email,guestPhone:row.guest_phone,notes:row.notes,status:row.status,source:row.source,createdAt:new Date(row.created_at).toISOString(),updatedAt:new Date(row.updated_at).toISOString()}))}};});}
+async function updateWaitlistStatus(ctx:Context,waitlistId:string,body:any):Promise<Result>{if(!canOperate(ctx))return fail(403,"FORBIDDEN","Your role cannot update the waitlist");const status=typeof body?.status==="string"&&waitlistStatuses.has(body.status)?body.status:null;if(!isUuid(waitlistId)||!status||status==="waiting")return fail(400,"INVALID_REQUEST","Waitlist status update is invalid");return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;const currentRows=await tx<any[]>`select id,status from mandys.reservation_waitlist where organization_id=${ctx.organizationId} and id=${waitlistId}::uuid limit 1`;const current=currentRows[0];if(!current)return fail(404,"NOT_FOUND","Waitlist entry not found");if(["converted","cancelled","expired"].includes(current.status))return fail(422,"INVALID_TRANSITION","This waitlist entry is already closed");const rows=await tx<any[]>`update mandys.reservation_waitlist set status=${status},updated_at=now() where organization_id=${ctx.organizationId} and id=${waitlistId}::uuid and status=${current.status} returning id,status`;if(!rows[0])return fail(409,"CONCURRENT_UPDATE","Waitlist entry was updated by another request");await audit(tx,ctx,"reservation.waitlist_status_changed","reservation_waitlist",waitlistId,{from:current.status,to:status});return{body:{data:{id:waitlistId,status}}};});}
 
-function allowedOrigin(origin: string | null): boolean {
-  if (!origin) return true;
-  try {
-    const url = new URL(origin);
-    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return true;
-    if (url.protocol !== "https:") return false;
-    return url.hostname === "mandys.pt" || url.hostname.endsWith(".mandys.pt") || url.hostname.endsWith(".vercel.app") || url.hostname.endsWith(".netlify.app");
-  } catch {
-    return false;
-  }
-}
-
-async function context(request: Request): Promise<Context | Result> {
-  const cookie = request.headers.get("cookie");
-  if (!cookie) return fail(401, "UNAUTHENTICATED", "Authentication is required");
-  const response = await fetch(authSessionUrl, { headers: { cookie, accept: "application/json" }, cache: "no-store" });
-  if (!response.ok) return fail(401, "UNAUTHENTICATED", "Session is invalid or expired");
-  const body = await response.json().catch(() => null) as any;
-  const userId = body?.user?.id;
-  const organizationId = body?.session?.activeOrganizationId;
-  if (typeof userId !== "string" || typeof organizationId !== "string") {
-    return fail(401, "TENANT_CONTEXT_REQUIRED", "Select an active restaurant organization");
-  }
-  const members = await sql<{ role: string }[]>`
-    select role from mandys.member where organization_id = ${organizationId} and user_id = ${userId} limit 1
-  `;
-  const role = members[0]?.role;
-  if (!role) return fail(403, "FORBIDDEN", "Organization membership is required");
-  return { userId, organizationId, role };
-}
-
-function canRead(ctx: Context) {
-  return ["owner", "manager", "reception", "kitchen", "staff"].includes(ctx.role);
-}
-
-function canWrite(ctx: Context) {
-  return ["owner", "manager", "reception"].includes(ctx.role);
-}
-
-async function assertEnabled(tx: any, ctx: Context) {
-  const rows = await tx<any[]>`
-    select status from mandys.module_entitlements
-    where organization_id = ${ctx.organizationId} and module_key = 'reservations' limit 1
-  `;
-  if (!rows[0] || rows[0].status === "disabled") throw new Error("RESERVATIONS_DISABLED");
-}
-
-async function audit(tx: any, ctx: Context, action: string, entityId: string | null, metadata: Record<string, unknown>) {
-  await tx`
-    insert into mandys.audit_logs (organization_id, actor_user_id, action, entity_type, entity_id, metadata)
-    values (${ctx.organizationId}, ${ctx.userId}, ${action}, 'reservation', ${entityId}, ${tx.json(metadata)})
-  `;
-}
-
-async function getConfig(tx: any, ctx: Context, locationId?: string | null) {
-  const locationRows = locationId
-    ? await tx<any[]>`
-        select id, name from mandys.locations
-        where organization_id = ${ctx.organizationId} and id = ${locationId}::uuid and is_active = true limit 1
-      `
-    : await tx<any[]>`
-        select id, name from mandys.locations
-        where organization_id = ${ctx.organizationId} and is_active = true order by created_at asc limit 1
-      `;
-  const location = locationRows[0];
-  if (!location) return null;
-  const [settingsRows, profileRows] = await Promise.all([
-    tx<any[]>`select timezone from mandys.tenant_settings where organization_id = ${ctx.organizationId} limit 1`,
-    tx<any[]>`
-      select reservation_duration_minutes from mandys.restaurant_profiles
-      where organization_id = ${ctx.organizationId} and location_id = ${location.id}::uuid limit 1
-    `,
-  ]);
-  return {
-    locationId: location.id as string,
-    locationName: location.name as string,
-    timezone: settingsRows[0]?.timezone ?? "Europe/Lisbon",
-    durationMinutes: Math.max(30, Math.min(360, Number(profileRows[0]?.reservation_duration_minutes ?? 90))),
-  };
-}
-
-async function openingBounds(tx: any, organizationId: string, locationId: string, timezone: string, localDate: string) {
-  const rows = await tx<any[]>`
-    with day_info as (select extract(dow from ${localDate}::date)::int as weekday),
-    hours as (
-      select oh.opens_at, oh.closes_at, oh.is_closed
-      from mandys.opening_hours oh, day_info d
-      where oh.organization_id = ${organizationId} and oh.location_id = ${locationId}::uuid and oh.weekday = d.weekday
-      limit 1
-    )
-    select is_closed,
-      case when is_closed or opens_at is null or closes_at is null then null
-        else ((${localDate}::date + opens_at::time) at time zone ${timezone}) end as open_at,
-      case when is_closed or opens_at is null or closes_at is null then null
-        else (((${localDate}::date + closes_at::time) + case when closes_at::time <= opens_at::time then interval '1 day' else interval '0 day' end) at time zone ${timezone}) end as close_at
-    from hours
-  `;
-  const row = rows[0];
-  if (!row || row.is_closed || !row.open_at || !row.close_at) return null;
-  return { openAt: new Date(row.open_at), closeAt: new Date(row.close_at) };
-}
-
-async function availability(ctx: Context, url: URL): Promise<Result> {
-  if (!canRead(ctx)) return fail(403, "FORBIDDEN", "Your role cannot access reservations");
-  const localDate = url.searchParams.get("date") ?? "";
-  const partySize = Number(url.searchParams.get("partySize") ?? 2);
-  const locationId = url.searchParams.get("locationId");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate) || !Number.isInteger(partySize) || partySize < 1 || partySize > 100 || (locationId && !isUuid(locationId))) {
-    return fail(400, "INVALID_QUERY", "Availability query is invalid");
-  }
-
-  return sql.begin(async tx => {
-    await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
-    await assertEnabled(tx, ctx);
-    const cfg = await getConfig(tx, ctx, locationId);
-    if (!cfg) return fail(404, "LOCATION_NOT_FOUND", "Restaurant location is not available");
-    const bounds = await openingBounds(tx, ctx.organizationId, cfg.locationId, cfg.timezone, localDate);
-    if (!bounds) return { body: { data: { locationId: cfg.locationId, timezone: cfg.timezone, durationMinutes: cfg.durationMinutes, slots: [] } } };
-
-    const tables = await tx<any[]>`
-      select id, min_seats, max_seats from mandys.restaurant_tables
-      where organization_id = ${ctx.organizationId} and location_id = ${cfg.locationId}::uuid and is_active = true
-      order by max_seats asc, min_seats asc, created_at asc
-    `;
-    if (tables.length === 0 || !tables.some((table: any) => Number(table.max_seats) >= partySize)) {
-      return { body: { data: { locationId: cfg.locationId, timezone: cfg.timezone, durationMinutes: cfg.durationMinutes, slots: [] } } };
-    }
-
-    const reservations = await tx<any[]>`
-      select table_id, starts_at, ends_at, party_size from mandys.reservations
-      where organization_id = ${ctx.organizationId} and location_id = ${cfg.locationId}::uuid
-        and status in ('pending','confirmed','seated')
-        and starts_at < ${bounds.closeAt.toISOString()}::timestamptz and ends_at > ${bounds.openAt.toISOString()}::timestamptz
-    `;
-    const totalCapacity = tables.reduce((sum: number, table: any) => sum + Number(table.max_seats), 0);
-    const slots: Slot[] = [];
-    const durationMs = cfg.durationMinutes * 60_000;
-    for (let at = bounds.openAt.getTime(); at + durationMs <= bounds.closeAt.getTime(); at += 30 * 60_000) {
-      const startsAt = new Date(at);
-      const endsAt = new Date(at + durationMs);
-      if (endsAt.getTime() <= Date.now()) continue;
-      const overlapping = reservations.filter((row: any) => new Date(row.starts_at).getTime() < endsAt.getTime() && new Date(row.ends_at).getTime() > startsAt.getTime());
-      const reservedCapacity = overlapping.reduce((sum: number, row: any) => sum + Number(row.party_size), 0);
-      const occupied = new Set(overlapping.map((row: any) => row.table_id).filter(Boolean));
-      const remainingCapacity = Math.max(0, totalCapacity - reservedCapacity);
-      const hasFittingTable = tables.some((table: any) => !occupied.has(table.id) && Number(table.max_seats) >= partySize);
-      slots.push({ startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), available: hasFittingTable && remainingCapacity >= partySize, remainingCapacity });
-    }
-    return { body: { data: { locationId: cfg.locationId, timezone: cfg.timezone, durationMinutes: cfg.durationMinutes, slots } } };
-  }).catch(error => String(error).includes("RESERVATIONS_DISABLED")
-    ? fail(403, "RESERVATIONS_DISABLED", "The reservations module is not enabled")
-    : Promise.reject(error));
-}
-
-async function list(ctx: Context, url: URL): Promise<Result> {
-  if (!canRead(ctx)) return fail(403, "FORBIDDEN", "Your role cannot access reservations");
-  const locationId = url.searchParams.get("locationId");
-  const fromRaw = url.searchParams.get("from");
-  const toRaw = url.searchParams.get("to");
-  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100)));
-  if ((locationId && !isUuid(locationId)) || !Number.isInteger(limit)) return fail(400, "INVALID_QUERY", "Reservation filters are invalid");
-  const from = fromRaw ? new Date(fromRaw) : null;
-  const to = toRaw ? new Date(toRaw) : null;
-  if ((from && !Number.isFinite(from.getTime())) || (to && !Number.isFinite(to.getTime())) || (from && to && to <= from)) {
-    return fail(400, "INVALID_QUERY", "Reservation date filters are invalid");
-  }
-
-  return sql.begin(async tx => {
-    await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
-    await assertEnabled(tx, ctx);
-    const rows = await tx<any[]>`
-      select r.id, r.location_id, r.customer_id, r.dining_area_id, r.table_id,
-        r.guest_name, r.guest_email, r.guest_phone, r.starts_at, r.ends_at,
-        r.party_size, r.status, r.notes, r.source, r.created_at, r.updated_at,
-        t.name as table_name, a.name as dining_area_name
-      from mandys.reservations r
-      left join mandys.restaurant_tables t on t.organization_id = r.organization_id and t.id = r.table_id
-      left join mandys.dining_areas a on a.organization_id = r.organization_id and a.id = r.dining_area_id
-      where r.organization_id = ${ctx.organizationId}
-        and (${locationId}::text is null or r.location_id = ${locationId}::uuid)
-        and (${from ? from.toISOString() : null}::timestamptz is null or r.ends_at > ${from ? from.toISOString() : null}::timestamptz)
-        and (${to ? to.toISOString() : null}::timestamptz is null or r.starts_at < ${to ? to.toISOString() : null}::timestamptz)
-      order by r.starts_at asc limit ${limit}
-    `;
-    return {
-      body: {
-        data: rows.map((row: any) => ({
-          id: row.id,
-          locationId: row.location_id,
-          customerId: row.customer_id,
-          diningAreaId: row.dining_area_id,
-          diningAreaName: row.dining_area_name,
-          tableId: row.table_id,
-          tableName: row.table_name,
-          guestName: row.guest_name,
-          guestEmail: row.guest_email,
-          guestPhone: row.guest_phone,
-          startsAt: new Date(row.starts_at).toISOString(),
-          endsAt: new Date(row.ends_at).toISOString(),
-          partySize: row.party_size,
-          status: row.status,
-          notes: row.notes,
-          source: row.source,
-          createdAt: new Date(row.created_at).toISOString(),
-          updatedAt: new Date(row.updated_at).toISOString(),
-        })),
-      },
-    };
-  }).catch(error => String(error).includes("RESERVATIONS_DISABLED")
-    ? fail(403, "RESERVATIONS_DISABLED", "The reservations module is not enabled")
-    : Promise.reject(error));
-}
-
-async function create(ctx: Context, body: any): Promise<Result> {
-  if (!canWrite(ctx)) return fail(403, "FORBIDDEN", "Your role cannot create reservations");
-  const locationId = body?.locationId;
-  const guestName = text(body?.guestName, 2, 120);
-  const guestEmail = email(body?.guestEmail);
-  const guestPhone = body?.guestPhone ? text(body.guestPhone, 1, 40) : null;
-  const notes = body?.notes ? text(body.notes, 1, 2000) : null;
-  const startsAt = new Date(body?.startsAt);
-  const partySize = Number(body?.partySize);
-  const requestedTableId = body?.tableId ?? null;
-  if (!isUuid(locationId) || !guestName || !Number.isFinite(startsAt.getTime()) || !Number.isInteger(partySize) || partySize < 1 || partySize > 100 || (body?.guestEmail && !guestEmail) || (body?.guestPhone && !guestPhone) || (requestedTableId && !isUuid(requestedTableId))) {
-    return fail(400, "INVALID_REQUEST", "Reservation data is invalid");
-  }
-
-  return sql.begin(async tx => {
-    await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
-    await assertEnabled(tx, ctx);
-    await tx`select pg_advisory_xact_lock(hashtext(${ctx.organizationId}), hashtext(${locationId}))`;
-    const cfg = await getConfig(tx, ctx, locationId);
-    if (!cfg) return fail(404, "LOCATION_NOT_FOUND", "Restaurant location is not available");
-    const localRows = await tx<any[]>`
-      select to_char(${startsAt.toISOString()}::timestamptz at time zone ${cfg.timezone}, 'YYYY-MM-DD') as local_date,
-             extract(minute from ${startsAt.toISOString()}::timestamptz at time zone ${cfg.timezone})::int as minute
-    `;
-    const localDate = localRows[0]?.local_date as string;
-    if (![0, 30].includes(Number(localRows[0]?.minute ?? -1))) return fail(422, "INVALID_SLOT", "Reservations must start on a 30-minute slot");
-    const bounds = await openingBounds(tx, ctx.organizationId, locationId, cfg.timezone, localDate);
-    const endsAt = new Date(startsAt.getTime() + cfg.durationMinutes * 60_000);
-    if (!bounds || startsAt < bounds.openAt || endsAt > bounds.closeAt) return fail(409, "SLOT_UNAVAILABLE", "The restaurant is closed at the selected time");
-
-    const tables = await tx<any[]>`
-      select id, dining_area_id, min_seats, max_seats from mandys.restaurant_tables
-      where organization_id = ${ctx.organizationId} and location_id = ${locationId}::uuid and is_active = true
-      order by max_seats asc, created_at asc
-    `;
-    const overlapping = await tx<any[]>`
-      select table_id, party_size from mandys.reservations
-      where organization_id = ${ctx.organizationId} and location_id = ${locationId}::uuid
-        and status in ('pending','confirmed','seated')
-        and starts_at < ${endsAt.toISOString()}::timestamptz and ends_at > ${startsAt.toISOString()}::timestamptz
-    `;
-    const totalCapacity = tables.reduce((sum: number, table: any) => sum + Number(table.max_seats), 0);
-    const reservedCapacity = overlapping.reduce((sum: number, row: any) => sum + Number(row.party_size), 0);
-    if (totalCapacity === 0 || reservedCapacity + partySize > totalCapacity) return fail(409, "SLOT_UNAVAILABLE", "No capacity is available for this time");
-    const occupied = new Set(overlapping.map((row: any) => row.table_id).filter(Boolean));
-    const table = requestedTableId
-      ? tables.find((row: any) => row.id === requestedTableId && Number(row.max_seats) >= partySize && !occupied.has(row.id))
-      : tables.find((row: any) => Number(row.max_seats) >= partySize && !occupied.has(row.id));
-    if (!table) return fail(409, "SLOT_UNAVAILABLE", "No suitable table is available for this time");
-
-    let customerId: string | null = null;
-    if (guestEmail || guestPhone) {
-      const existing = guestEmail
-        ? await tx<any[]>`select id from mandys.customers where organization_id=${ctx.organizationId} and lower(email)=${guestEmail} limit 1`
-        : await tx<any[]>`select id from mandys.customers where organization_id=${ctx.organizationId} and phone=${guestPhone} limit 1`;
-      customerId = existing[0]?.id ?? null;
-    }
-    if (!customerId) {
-      const parts = guestName.split(/\s+/);
-      const firstName = parts.shift() ?? guestName;
-      const lastName = parts.join(" ") || null;
-      const createdCustomer = await tx<any[]>`
-        insert into mandys.customers (organization_id, first_name, last_name, email, phone)
-        values (${ctx.organizationId}, ${firstName}, ${lastName}, ${guestEmail}, ${guestPhone}) returning id
-      `;
-      customerId = createdCustomer[0]?.id ?? null;
-    }
-
-    const rows = await tx<any[]>`
-      insert into mandys.reservations (
-        organization_id, location_id, customer_id, dining_area_id, table_id,
-        guest_name, guest_email, guest_phone, starts_at, ends_at, party_size, status, notes, source
-      ) values (
-        ${ctx.organizationId}, ${locationId}::uuid, ${customerId}::uuid, ${table.dining_area_id}::uuid, ${table.id}::uuid,
-        ${guestName}, ${guestEmail}, ${guestPhone}, ${startsAt.toISOString()}::timestamptz, ${endsAt.toISOString()}::timestamptz,
-        ${partySize}, 'pending', ${notes}, 'backoffice'
-      ) returning id, starts_at, ends_at, status
-    `;
-    const created = rows[0];
-    await audit(tx, ctx, "reservation.created", created.id, { locationId, tableId: table.id, partySize, startsAt: startsAt.toISOString() });
-    return { status: 201, body: { data: { id: created.id, startsAt: new Date(created.starts_at).toISOString(), endsAt: new Date(created.ends_at).toISOString(), partySize, status: created.status, tableId: table.id } } };
-  }).catch(error => String(error).includes("RESERVATIONS_DISABLED")
-    ? fail(403, "RESERVATIONS_DISABLED", "The reservations module is not enabled")
-    : Promise.reject(error));
-}
-
-async function changeStatus(ctx: Context, reservationId: string, body: any): Promise<Result> {
-  if (!canWrite(ctx)) return fail(403, "FORBIDDEN", "Your role cannot update reservations");
-  const status = typeof body?.status === "string" ? body.status : "";
-  if (!isUuid(reservationId) || !Object.hasOwn(transitions, status)) return fail(400, "INVALID_REQUEST", "Reservation status update is invalid");
-  return sql.begin(async tx => {
-    await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
-    await assertEnabled(tx, ctx);
-    const currentRows = await tx<any[]>`
-      select id,status from mandys.reservations where organization_id=${ctx.organizationId} and id=${reservationId}::uuid limit 1
-    `;
-    const current = currentRows[0];
-    if (!current) return fail(404, "NOT_FOUND", "Reservation not found");
-    if (current.status === status) return { body: { data: { id: current.id, status } } };
-    if (!(transitions[current.status] ?? []).includes(status)) return fail(422, "INVALID_TRANSITION", `Reservation status cannot transition from ${current.status} to ${status}`);
-    const updated = await tx<any[]>`
-      update mandys.reservations set status=${status}::mandys.reservation_status, updated_at=now()
-      where organization_id=${ctx.organizationId} and id=${reservationId}::uuid and status=${current.status}::mandys.reservation_status
-      returning id,status
-    `;
-    if (!updated[0]) return fail(409, "CONCURRENT_UPDATE", "Reservation was updated by another request");
-    await audit(tx, ctx, "reservation.status_changed", reservationId, { from: current.status, to: status });
-    return { body: { data: { id: reservationId, status } } };
-  }).catch(error => String(error).includes("RESERVATIONS_DISABLED")
-    ? fail(403, "RESERVATIONS_DISABLED", "The reservations module is not enabled")
-    : Promise.reject(error));
-}
-
-Deno.serve(async request => {
-  const url = new URL(request.url);
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { allow: "GET,POST,PATCH,OPTIONS" } });
-  if (request.method === "GET" && (url.pathname.endsWith("/health") || url.pathname.endsWith("/mandys-reservations"))) return json({ ok: true, service: "mandys-reservations" });
-  if (!allowedOrigin(request.headers.get("origin"))) return json({ error: "ORIGIN_NOT_ALLOWED", message: "Request origin is not allowed" }, 403);
-  try {
-    const ctxOrError = await context(request);
-    if ("body" in ctxOrError) return json(ctxOrError.body, ctxOrError.status ?? 400);
-    const ctx = ctxOrError;
-    const marker = url.pathname.indexOf("/v1/");
-    if (marker === -1) return json({ error: "NOT_FOUND" }, 404);
-    const path = url.pathname.slice(marker);
-    let result: Result;
-    if (request.method === "GET" && path === "/v1/reservations") result = await list(ctx, url);
-    else if (request.method === "GET" && path === "/v1/availability") result = await availability(ctx, url);
-    else if (request.method === "POST" && path === "/v1/reservations") result = await create(ctx, await request.json().catch(() => null));
-    else if (request.method === "PATCH" && /^\/v1\/reservations\/[0-9a-f-]+\/status$/i.test(path)) {
-      const reservationId = path.split("/")[3] ?? "";
-      result = await changeStatus(ctx, reservationId, await request.json().catch(() => null));
-    } else result = fail(404, "NOT_FOUND", "Route not found");
-    return json(result.body, result.status ?? 200);
-  } catch (error) {
-    console.error("mandys-reservations error", error instanceof Error ? error.message : String(error));
-    return json({ error: "INTERNAL_ERROR", message: "Reservation operation could not be completed" }, 500);
-  }
-});
+Deno.serve(async request=>{const url=new URL(request.url);if(request.method==="OPTIONS")return new Response(null,{status:204,headers:{allow:"GET,POST,PUT,PATCH,DELETE,OPTIONS"}});if(request.method==="GET"&&(url.pathname.endsWith("/health")||url.pathname.endsWith("/mandys-reservations")))return json({ok:true,service:"mandys-reservations"});if(!allowedOrigin(request.headers.get("origin")))return json({error:"ORIGIN_NOT_ALLOWED",message:"Request origin is not allowed"},403);try{const ctxOrError=await context(request);if("body" in ctxOrError)return json(ctxOrError.body,ctxOrError.status??400);const ctx=ctxOrError;const marker=url.pathname.indexOf("/v1/");if(marker===-1)return json({error:"NOT_FOUND"},404);const path=url.pathname.slice(marker);let result:Result;if(request.method==="GET"&&path==="/v1/reservations")result=await listReservations(ctx,url);else if(request.method==="GET"&&path==="/v1/availability")result=await availability(ctx,url);else if(request.method==="POST"&&path==="/v1/reservations")result=await createReservation(ctx,await request.json().catch(()=>null));else if(request.method==="PATCH"&&/^\/v1\/reservations\/[0-9a-f-]+\/status$/i.test(path))result=await changeReservationStatus(ctx,path.split("/")[3]??"",await request.json().catch(()=>null));else if(request.method==="GET"&&path==="/v1/policies")result=await getPolicies(ctx);else if(request.method==="PUT"&&path==="/v1/policies")result=await updatePolicies(ctx,await request.json().catch(()=>null));else if(request.method==="POST"&&path==="/v1/exceptions")result=await saveException(ctx,await request.json().catch(()=>null));else if(request.method==="DELETE"&&/^\/v1\/exceptions\/[0-9a-f-]+$/i.test(path))result=await deleteException(ctx,path.split("/")[3]??"");else if(request.method==="GET"&&path==="/v1/waitlist")result=await listWaitlist(ctx,url);else if(request.method==="PATCH"&&/^\/v1\/waitlist\/[0-9a-f-]+\/status$/i.test(path))result=await updateWaitlistStatus(ctx,path.split("/")[3]??"",await request.json().catch(()=>null));else result=fail(404,"NOT_FOUND","Route not found");return json(result.body,result.status??200);}catch(error){console.error("mandys-reservations error",error instanceof Error?error.message:String(error));return json({error:"INTERNAL_ERROR",message:"Reservation operation could not be completed"},500);}});

@@ -1,5 +1,5 @@
 -- Mandy's tenant isolation layer.
--- Apply after the Drizzle schema migration. The API must set
+-- Apply after the Drizzle/schema migrations. The API must set
 -- app.organization_id inside every tenant transaction.
 
 DO $$
@@ -26,6 +26,8 @@ DECLARE
     'dining_areas',
     'restaurant_tables',
     'reservations',
+    'reservation_exceptions',
+    'reservation_waitlist',
     'event_leads',
     'audit_logs'
   ];
