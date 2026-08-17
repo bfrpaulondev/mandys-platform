@@ -51,8 +51,6 @@ create policy tenant_isolation on mandys.transactional_email_outbox
   with check (organization_id = (select current_setting('app.organization_id', true)));
 revoke all on mandys.transactional_email_outbox from anon, authenticated;
 
--- Called from trusted database code only. `on conflict` makes repeated audit
--- events safe even if the producer transaction is retried.
 create or replace function mandys.enqueue_transactional_email(
   p_organization_id text,
   p_event_key text,
@@ -106,6 +104,7 @@ as $$
 declare
   v_recipient text;
   v_locale mandys.locale_code;
+  v_timezone text := 'Europe/Lisbon';
   v_template text;
   v_payload jsonb := '{}'::jsonb;
   v_reply_to text;
@@ -113,10 +112,11 @@ declare
   v_location_name text;
 begin
   select ts.default_locale,
+         ts.timezone,
          rp.public_name,
          coalesce(l.name,'') as location_name,
          coalesce(l.email,rp.contact_email)
-    into v_locale,v_public_name,v_location_name,v_reply_to
+    into v_locale,v_timezone,v_public_name,v_location_name,v_reply_to
   from mandys.tenant_settings ts
   left join mandys.restaurant_profiles rp on rp.organization_id=ts.organization_id
   left join mandys.locations l on l.organization_id=ts.organization_id
@@ -131,6 +131,7 @@ begin
              'guestName',coalesce(r.guest_name,c.first_name,''),
              'startsAt',r.starts_at,
              'partySize',r.party_size,
+             'timezone',v_timezone,
              'restaurantName',coalesce(v_public_name,''),
              'locationName',coalesce(l.name,v_location_name,'')
            )
@@ -147,6 +148,7 @@ begin
              'guestName',coalesce(w.guest_name,c.first_name,''),
              'requestedDate',w.requested_date,
              'partySize',w.party_size,
+             'timezone',v_timezone,
              'restaurantName',coalesce(v_public_name,''),
              'locationName',coalesce(l.name,v_location_name,'')
            )
@@ -165,6 +167,7 @@ begin
              'totalMinor',o.total_cents,
              'currency',o.currency,
              'trackingToken',o.public_tracking_token,
+             'timezone',v_timezone,
              'restaurantName',coalesce(v_public_name,''),
              'locationName',coalesce(l.name,v_location_name,'')
            )
@@ -182,6 +185,7 @@ begin
              'eventAt',e.event_at,
              'partySize',e.party_size,
              'eventType',e.event_type,
+             'timezone',v_timezone,
              'restaurantName',coalesce(v_public_name,''),
              'locationName',coalesce(l.name,v_location_name,'')
            )
