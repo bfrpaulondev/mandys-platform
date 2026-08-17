@@ -9,6 +9,8 @@ const storefrontLiveMarker =
 const storefrontFallbackMarker = "Maré · Demonstração Mandy's";
 const backofficeReadinessVersion =
   process.env.MANDYS_BACKOFFICE_READINESS_VERSION ?? "authenticated-lifecycle-v1";
+const reservationProbeTimezone =
+  process.env.MANDYS_RESERVATION_PROBE_TIMEZONE ?? "Europe/Lisbon";
 
 const storefrontLocales = [
   ["pt-PT", "Português (Portugal)", "Reserve diretamente", "Reservar mesa"],
@@ -21,8 +23,24 @@ const transientStatuses = new Set([408, 429, 502, 503, 504]);
 const maxAttempts = 3;
 const requestTimeoutMs = 15_000;
 
-function futureDateValue(offsetDays = 1) {
-  const date = new Date();
+function datePartsInTimezone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+  };
+}
+
+function futureDateValue(offsetDays = 2, timeZone = reservationProbeTimezone) {
+  const { year, month, day } = datePartsInTimezone(new Date(), timeZone);
+  const date = new Date(Date.UTC(year, month - 1, day));
   date.setUTCDate(date.getUTCDate() + offsetDays);
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
@@ -42,7 +60,7 @@ async function fetchWithTransientRetry(target) {
       const response = await fetch(target.url, {
         redirect: "follow",
         signal: controller.signal,
-        headers: { "user-agent": "mandys-v0.1-readiness-check/1.6" },
+        headers: { "user-agent": "mandys-v0.1-readiness-check/1.7" },
       });
 
       if (!transientStatuses.has(response.status) || attempt === maxAttempts) {
