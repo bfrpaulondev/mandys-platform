@@ -7,6 +7,8 @@ const storefrontOrigin =
 const storefrontLiveMarker =
   process.env.MANDYS_STOREFRONT_LIVE_MARKER ?? "Maré · Setúbal";
 const storefrontFallbackMarker = "Maré · Demonstração Mandy's";
+const backofficeReadinessVersion =
+  process.env.MANDYS_BACKOFFICE_READINESS_VERSION ?? "authenticated-lifecycle-v1";
 
 const storefrontLocales = [
   ["pt-PT", "Português (Portugal)", "Reserve diretamente", "Reservar mesa"],
@@ -33,7 +35,7 @@ const targets = [
   {
     name: "Backoffice health",
     url: `${backofficeOrigin}/api/health`,
-    requiredText: ["ok"],
+    requiredText: ["ok", backofficeReadinessVersion],
   },
   {
     name: "Backoffice auth gateway",
@@ -94,7 +96,7 @@ for (const target of targets) {
     const response = await fetch(target.url, {
       redirect: "follow",
       signal: controller.signal,
-      headers: { "user-agent": "mandys-v0.1-readiness-check/1.4" },
+      headers: { "user-agent": "mandys-v0.1-readiness-check/1.5" },
     });
     const body = await response.text();
     const normalizedBody = body.toLocaleLowerCase();
@@ -145,5 +147,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nPublic deployment smoke checks passed with a DB-backed Storefront, localized reservation surface and live reservation policy contract. Browser E2E is still required before V0.1 is declared ready.",
+  "\nPublic deployment smoke checks passed with the required Backoffice readiness version, a DB-backed Storefront, localized reservation surface and live reservation policy contract. Browser E2E is still required before V0.1 is declared ready.",
 );

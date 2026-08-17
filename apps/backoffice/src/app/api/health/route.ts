@@ -7,6 +7,7 @@ export function GET() {
     {
       service: "mandys-backoffice",
       status: "ok",
+      readinessVersion: "authenticated-lifecycle-v1",
     },
     {
       status: 200,

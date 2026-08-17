@@ -3,12 +3,16 @@ import { expect, test } from "@playwright/test";
 const backofficeOrigin =
   process.env.MANDYS_BACKOFFICE_ORIGIN ?? "https://mandyplataform.netlify.app";
 
+function pathIs(url, expected) {
+  return url.pathname.replace(/\/+$/, "") === expected;
+}
+
 async function signIn(page, email, password) {
   await page.goto(`${backofficeOrigin}/en/login`, { waitUntil: "domcontentloaded" });
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in to Mandy's", exact: true }).click();
-  await page.waitForURL((url) => !url.pathname.endsWith("/login"), { timeout: 15_000 });
+  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 15_000 });
 }
 
 async function deleteUser(page, password) {
@@ -42,18 +46,53 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
     await page.getByLabel("Name", { exact: true }).fill("Mandy E2E Owner");
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Password", { exact: true }).fill(password);
+
+    const signupResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/auth/sign-up/email"),
+      { timeout: 20_000 },
+    );
     await page.getByRole("button", { name: "Create account and continue", exact: true }).click();
-    await page.waitForURL(/\/en\/onboarding(?:\?|$)/, { timeout: 15_000 });
+    const signupResponse = await signupResponsePromise;
+    expect(signupResponse.ok(), `signup returned ${signupResponse.status()}`).toBeTruthy();
     userCreated = true;
 
+    await page.waitForURL((url) => pathIs(url, "/en/onboarding"), { timeout: 15_000 });
     await page.getByLabel("Restaurant public name", { exact: true }).fill(restaurantName);
     await page.getByLabel("Restaurant identifier", { exact: true }).fill(restaurantSlug);
     await page.getByLabel("Country (ISO 2)", { exact: true }).fill("PT");
     await page.getByLabel("Currency (ISO 3)", { exact: true }).fill("EUR");
     await page.getByLabel("Timezone", { exact: true }).fill("Europe/Lisbon");
+
+    const organizationResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/auth/organization/create"),
+      { timeout: 20_000 },
+    );
+    const onboardingResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/runtime/v1/onboarding/restaurant"),
+      { timeout: 25_000 },
+    );
     await page.getByRole("button", { name: "Create restaurant", exact: true }).click();
-    await page.waitForURL((url) => url.pathname === "/en" || url.pathname === "/en/", { timeout: 20_000 });
+
+    const organizationResponse = await organizationResponsePromise;
+    expect(
+      organizationResponse.ok(),
+      `organization create returned ${organizationResponse.status()}`,
+    ).toBeTruthy();
     tenantCreated = true;
+
+    const onboardingResponse = await onboardingResponsePromise;
+    expect(
+      onboardingResponse.ok(),
+      `restaurant onboarding returned ${onboardingResponse.status()}: ${await onboardingResponse.text()}`,
+    ).toBeTruthy();
+
+    await page.waitForURL((url) => pathIs(url, "/en"), { timeout: 20_000 });
 
     await expect(page.getByRole("navigation", { name: "Mandy's" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Reservations", exact: true })).toBeVisible();
@@ -77,7 +116,9 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
       "data",
     ];
     for (const path of privatePaths) {
-      const response = await page.goto(`${backofficeOrigin}/en/${path}`, { waitUntil: "domcontentloaded" });
+      const response = await page.goto(`${backofficeOrigin}/en/${path}`, {
+        waitUntil: "domcontentloaded",
+      });
       expect(response?.status(), `${path} returned a server error`).toBeLessThan(500);
       await page.waitForTimeout(150);
       expect(page.url(), `${path} unexpectedly lost the authenticated session`).not.toContain("/login");
@@ -86,9 +127,10 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
     const protectedAccountDelete = await deleteUser(page, password);
     expect(protectedAccountDelete.status()).toBe(400);
 
-    const exportResponse = await page.request.get(`${backofficeOrigin}/api/data-protection/v1/export`, {
-      headers: { accept: "application/json" },
-    });
+    const exportResponse = await page.request.get(
+      `${backofficeOrigin}/api/data-protection/v1/export`,
+      { headers: { accept: "application/json" } },
+    );
     expect(exportResponse.ok()).toBeTruthy();
     const exported = await exportResponse.json();
     expect(exported?.format).toBe("mandys-tenant-export-v1");
@@ -110,15 +152,20 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
   } finally {
     if (userCreated) {
       try {
-        if (page.url().includes("/login")) await signIn(page, email, password);
+        const session = await page.request.get(`${backofficeOrigin}/api/auth/get-session`, {
+          headers: { accept: "application/json" },
+        });
+        if (!session.ok() || (await session.text()) === "null") {
+          await signIn(page, email, password);
+        }
         if (tenantCreated) {
           const cleanupTenant = await deleteTenant(page);
           if (cleanupTenant.ok()) tenantCreated = false;
         }
-        await deleteUser(page, password);
+        const cleanupUser = await deleteUser(page, password);
+        if (cleanupUser.ok()) userCreated = false;
       } catch {
-        // Best-effort cleanup. A failing cleanup keeps the test failed through its
-        // original assertion; it must never hide the actual product regression.
+        // Best-effort cleanup. CI additionally checks for orphaned E2E identities.
       }
     }
   }
