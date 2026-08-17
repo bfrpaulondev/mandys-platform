@@ -42,7 +42,10 @@ export function OnboardingForm({ locale }: { locale: Locale }) {
     return [...new Set(initial)];
   });
 
-  const defaultLocale = useMemo<Locale>(() => enabledLocales.includes(locale) ? locale : (enabledLocales[0] ?? "pt-PT"), [enabledLocales, locale]);
+  const defaultLocale = useMemo<Locale>(
+    () => (enabledLocales.includes(locale) ? locale : (enabledLocales[0] ?? "pt-PT")),
+    [enabledLocales, locale],
+  );
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,10 +120,10 @@ export function OnboardingForm({ locale }: { locale: Locale }) {
   return (
     <form onSubmit={onSubmit} className="space-y-6 rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-5 shadow-[var(--mandys-shadow-sm)] sm:p-7">
       <div className="grid gap-5 sm:grid-cols-2">
-        <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium">{c.publicName}</span><input value={publicName} onChange={(event) => { const next = event.target.value; setPublicName(next); if (!slugTouched) setSlug(normalizeSlug(next)); }} required minLength={2} maxLength={160} className={inputClass} /></label>
+        <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium">{c.publicName}</span><input name="publicName" value={publicName} onChange={(event) => { const next = event.target.value; setPublicName(next); if (!slugTouched) setSlug(normalizeSlug(next)); }} required minLength={2} maxLength={160} className={inputClass} /></label>
         <label><span className="mb-1.5 block text-sm font-medium">{c.legalName}</span><input name="legalName" maxLength={200} className={inputClass} /></label>
         <label><span className="mb-1.5 block text-sm font-medium">{c.locationName}</span><input name="locationName" defaultValue="Principal" required minLength={2} maxLength={160} className={inputClass} /></label>
-        <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium">{c.slug}</span><input value={slug} onChange={(event) => { setSlugTouched(true); setSlug(normalizeSlug(event.target.value)); }} required minLength={2} maxLength={80} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" className={`${inputClass} font-mono`} /><span className="mt-1.5 block text-xs text-[var(--mandys-foreground-muted)]">{c.slugHelp}</span></label>
+        <label className="sm:col-span-2" htmlFor="restaurant-slug"><span className="mb-1.5 block text-sm font-medium">{c.slug}</span><input id="restaurant-slug" name="slug" value={slug} onChange={(event) => { setSlugTouched(true); setSlug(normalizeSlug(event.target.value)); }} required minLength={2} maxLength={80} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" aria-describedby="restaurant-slug-help" className={`${inputClass} font-mono`} /><span id="restaurant-slug-help" className="mt-1.5 block text-xs text-[var(--mandys-foreground-muted)]">{c.slugHelp}</span></label>
         <label><span className="mb-1.5 block text-sm font-medium">{c.email}</span><input name="email" type="email" autoComplete="email" className={inputClass} /></label>
         <label><span className="mb-1.5 block text-sm font-medium">{c.phone}</span><input name="phone" type="tel" autoComplete="tel" maxLength={40} className={inputClass} /></label>
         <label className="sm:col-span-2"><span className="mb-1.5 block text-sm font-medium">{c.address}</span><input name="addressLine1" autoComplete="street-address" maxLength={200} className={inputClass} /></label>

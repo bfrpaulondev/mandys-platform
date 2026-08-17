@@ -45,10 +45,6 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
     });
     expect(loginResponse?.ok()).toBeTruthy();
 
-    // Create the disposable identity through the exact same-origin auth gateway
-    // used by the browser. The request context shares cookies with the page,
-    // which removes client-side navigation timing from this lifecycle test while
-    // preserving the real production session and cookie path.
     const signupResponse = await page.request.post(
       `${backofficeOrigin}/api/auth/sign-up/email`,
       {
@@ -75,7 +71,7 @@ test("Backoffice disposable owner can onboard, traverse private product areas, e
     });
 
     await page.getByLabel("Restaurant public name", { exact: true }).fill(restaurantName);
-    await page.getByLabel("Restaurant identifier", { exact: true }).fill(restaurantSlug);
+    await page.locator('input[name="slug"]').fill(restaurantSlug);
     await page.getByLabel("Country (ISO 2)", { exact: true }).fill("PT");
     await page.getByLabel("Currency (ISO 3)", { exact: true }).fill("EUR");
     await page.getByLabel("Timezone", { exact: true }).fill("Europe/Lisbon");
