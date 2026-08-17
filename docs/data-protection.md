@@ -1,24 +1,24 @@
 # Data protection baseline
 
-Mandy's is designed to minimize unnecessary personal data while still supporting restaurant operations.
+Mandy's minimizes unnecessary personal data while supporting restaurant operations.
 
 ## Shipped safeguards
+- Service messages and marketing consent are separate; consent stores timestamp/source and can be withdrawn.
+- Tenant export is owner-only and excludes credentials, tokens, provider customer/subscription identifiers and audit IP hashes.
+- Tenant deletion is owner-only and removes operational data plus the Better Auth organization atomically.
+- Better Auth generic organization deletion is disabled; user deletion is allowed only after no Mandy's memberships remain.
+- Retention policy is owner-configurable for customer data, audit records and in-app notifications. NULL/blank means no automatic deletion policy for that category.
+- Retention values are constrained to 30–3650 whole days and policy changes are audited.
 
-- Reservation service messages and marketing consent are separate concepts.
-- Marketing consent stores timestamp and source and can be withdrawn independently.
-- Customer notes must be operationally relevant; sensitive data should not be collected casually.
-- Public storefront requests avoid exposing internal identifiers when a stable public slug can be used.
-- Logs must not contain raw authorization credentials or unnecessary request bodies.
-- Tenant-wide export is owner-only and excludes credentials, tokens, provider customer/subscription identifiers and audit IP hashes.
-- Tenant deletion is owner-only and removes operational data plus the Better Auth organization in one database transaction.
-- Better Auth's generic organization deletion endpoint is disabled so it cannot bypass Mandy's tenant cleanup.
-- User-account deletion is enabled only after the user has no remaining Mandy's organization memberships.
+## Retention execution
+Saving a retention period does **not** delete data. Automated enforcement stays disabled until category-specific cleanup/anonymization semantics are implemented and reviewed. Mandy's does not assume one universal legal retention period across countries, fiscal contexts or restaurant workflows.
+
+Customer cleanup is especially sensitive because reservations, orders and events can have operational, accounting or legal retention requirements. Automatic cleanup must define what is anonymized versus deleted before activation.
 
 ## Before broad production onboarding
-
-- Retention periods must become tenant-configurable and enforced by scheduled cleanup.
-- External processors (payments, email/SMS, media and future AI providers) must be documented in the production privacy/processors inventory when enabled.
-- Backup retention and restoration procedures must align with the application's deletion/retention policy.
+- Activate retention executors only after category-specific review.
+- Document external processors when payments, email/SMS, media and AI providers are enabled.
+- Align backup retention/restoration with deletion and retention policy.
 
 AI features will use scoped, minimum-necessary context and will not receive unrestricted database access.
 
