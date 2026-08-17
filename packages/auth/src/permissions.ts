@@ -45,46 +45,46 @@ export const manager = ac.newRole({
 
 export const reception = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"],
+  restaurant: [],
   menu: ["read"],
   reservation: ["read", "create", "update", "cancel"],
   customer: ["read", "create", "update"],
   event: ["read", "create", "update"],
   order: ["read", "create", "update"],
-  stock: ["read"],
+  stock: [],
   analytics: ["read"],
-  settings: ["read"],
+  settings: [],
 });
 
 export const kitchen = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"],
+  restaurant: [],
   menu: ["read", "update"],
   reservation: ["read"],
   customer: [],
-  event: ["read"],
+  event: [],
   order: ["read", "update"],
   stock: ["read", "update", "adjust"],
   analytics: [],
-  settings: ["read"],
+  settings: [],
 });
 
 export const staff = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"],
+  restaurant: [],
   menu: ["read"],
   reservation: ["read"],
   customer: [],
-  event: ["read"],
+  event: [],
   order: ["read", "update"],
   stock: ["read"],
   analytics: [],
-  settings: ["read"],
+  settings: [],
 });
 
 export const marketing = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"],
+  restaurant: [],
   menu: ["read", "update", "publish"],
   reservation: [],
   customer: [],
@@ -92,20 +92,20 @@ export const marketing = ac.newRole({
   order: [],
   stock: [],
   analytics: ["read"],
-  settings: ["read"],
+  settings: [],
 });
 
 export const accounting = ac.newRole({
   ...memberAc.statements,
-  restaurant: ["read"],
+  restaurant: [],
   menu: ["read"],
-  reservation: ["read"],
+  reservation: [],
   customer: [],
-  event: ["read"],
-  order: ["read"],
+  event: [],
+  order: [],
   stock: ["read"],
   analytics: ["read"],
-  settings: ["read"],
+  settings: [],
 });
 
 export const mandysRoles = {

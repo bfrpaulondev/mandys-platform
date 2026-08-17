@@ -63,7 +63,7 @@ async function context(request: Request): Promise<Context | Result> {
   return { userId, organizationId, role };
 }
 function canRead(ctx: Context) { return ["owner", "manager", "reception", "kitchen", "staff"].includes(ctx.role); }
-function canOperate(ctx: Context) { return ["owner", "manager", "reception", "kitchen"].includes(ctx.role); }
+function canUpdate(ctx: Context) { return ["owner", "manager", "reception", "kitchen", "staff"].includes(ctx.role); }
 async function assertEnabled(tx: any, organizationId: string) { const rows = await tx<any[]>`select status from mandys.module_entitlements where organization_id=${organizationId} and module_key='orders' limit 1`; if (!rows[0] || rows[0].status === "disabled") throw new Error("ORDERS_DISABLED"); }
 async function audit(tx: any, organizationId: string, userId: string | null, action: string, entityId: string, metadata: Record<string, unknown>, ipHash?: string | null) { await tx`insert into mandys.audit_logs (organization_id,actor_user_id,action,entity_type,entity_id,ip_hash,metadata) values (${organizationId},${userId},${action},'order',${entityId},${ipHash ?? null},${tx.json(metadata)})`; }
 
@@ -111,7 +111,7 @@ async function listOrders(ctx: Context, url: URL): Promise<Result> {
 }
 
 async function changeStatus(ctx: Context, orderId: string, body: any): Promise<Result> {
-  if (!canOperate(ctx)) return fail(403, "FORBIDDEN", "Your role cannot update orders");
+  if (!canUpdate(ctx)) return fail(403, "FORBIDDEN", "Your role cannot update orders");
   const status = typeof body?.status === "string" && Object.hasOwn(transitions, body.status) ? body.status as OrderStatus : null;
   if (!isUuid(orderId) || !status) return fail(400, "INVALID_REQUEST", "Order status update is invalid");
   return sql.begin(async (tx) => {

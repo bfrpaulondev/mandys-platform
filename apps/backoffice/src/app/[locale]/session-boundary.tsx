@@ -8,6 +8,17 @@ import { useEffect, useState } from "react";
 
 import { authClient } from "../../lib/auth-client";
 
+const operationalRoles = ["owner", "manager", "reception", "kitchen", "staff", "marketing", "accounting"] as const;
+const reservationRoles = ["owner", "manager", "reception", "kitchen", "staff"] as const;
+const orderRoles = ["owner", "manager", "reception", "kitchen", "staff"] as const;
+const menuRoles = operationalRoles;
+const stockRoles = ["owner", "manager", "kitchen", "staff", "accounting"] as const;
+const eventRoles = ["owner", "manager", "reception", "marketing"] as const;
+const customerRoles = ["owner", "manager", "reception"] as const;
+const insightRoles = ["owner", "manager", "reception", "marketing", "accounting"] as const;
+const adminRoles = ["owner", "manager"] as const;
+const billingRoles = ["owner", "manager", "accounting"] as const;
+
 const copy = {
   "pt-PT": { loading: "A verificar sessão…", unavailable: "Não foi possível verificar a sessão. Atualize a página para tentar novamente.", dashboard: "Painel", reservations: "Reservas", orders: "Pedidos", menu: "Menu", stock: "Stock", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificações", team: "Equipa", profile: "Perfil", settings: "Operação", activity: "Atividade", billing: "Plano", data: "Dados", logout: "Sair" },
   "pt-BR": { loading: "Verificando sessão…", unavailable: "Não foi possível verificar a sessão. Atualize a página para tentar novamente.", dashboard: "Painel", reservations: "Reservas", orders: "Pedidos", menu: "Cardápio", stock: "Estoque", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificações", team: "Equipe", profile: "Perfil", settings: "Operação", activity: "Atividade", billing: "Plano", data: "Dados", logout: "Sair" },
@@ -15,23 +26,45 @@ const copy = {
   es: { loading: "Verificando la sesión…", unavailable: "No se pudo verificar la sesión. Actualiza la página para intentarlo de nuevo.", dashboard: "Panel", reservations: "Reservas", orders: "Pedidos", menu: "Menú", stock: "Stock", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificaciones", team: "Equipo", profile: "Perfil", settings: "Operación", activity: "Actividad", billing: "Plan", data: "Datos", logout: "Salir" },
 } as const satisfies Record<Locale, Record<string, string>>;
 
+function hasRole(role: string | null, allowed: readonly string[]) {
+  return role !== null && allowed.includes(role);
+}
+
 export function SessionBoundary({ locale, children }: { locale: Locale; children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLogin = pathname.endsWith("/login");
   const [state, setState] = useState<"checking" | "ready" | "unavailable">(isLogin ? "ready" : "checking");
+  const [role, setRole] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    if (isLogin) { setState("ready"); return; }
+    if (isLogin) { setState("ready"); setRole(null); return; }
     let cancelled = false;
     setState("checking");
-    void authClient.getSession().then((result) => {
-      if (cancelled) return;
-      if (result.error) { setState("unavailable"); return; }
-      if (!result.data) { router.replace(`/${locale}/login`); return; }
-      setState("ready");
-    }).catch(() => { if (!cancelled) setState("unavailable"); });
+    void (async () => {
+      try {
+        const sessionResult = await authClient.getSession();
+        if (cancelled) return;
+        if (sessionResult.error) { setState("unavailable"); return; }
+        if (!sessionResult.data) { router.replace(`/${locale}/login`); return; }
+
+        if (!sessionResult.data.session.activeOrganizationId) {
+          setRole(null);
+          setState("ready");
+          return;
+        }
+
+        const roleResult = await authClient.organization.getActiveMemberRole();
+        if (cancelled) return;
+        if (roleResult.error) { setState("unavailable"); return; }
+        const activeRole = roleResult.data?.role;
+        setRole(Array.isArray(activeRole) ? (activeRole[0] ?? null) : (activeRole ?? null));
+        setState("ready");
+      } catch {
+        if (!cancelled) setState("unavailable");
+      }
+    })();
     return () => { cancelled = true; };
   }, [isLogin, locale, router]);
 
@@ -46,22 +79,22 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
   if (state === "ready") {
     const c = copy[locale];
     const links = [
-      { href: `/${locale}`, label: c.dashboard, exact: true },
-      { href: `/${locale}/reservations`, label: c.reservations },
-      { href: `/${locale}/orders`, label: c.orders },
-      { href: `/${locale}/menu`, label: c.menu },
-      { href: `/${locale}/stock`, label: c.stock },
-      { href: `/${locale}/events`, label: c.events },
-      { href: `/${locale}/customers`, label: c.customers },
-      { href: `/${locale}/insights`, label: c.insights },
-      { href: `/${locale}/notifications`, label: c.notifications },
-      { href: `/${locale}/team`, label: c.team },
-      { href: `/${locale}/profile`, label: c.profile },
-      { href: `/${locale}/settings`, label: c.settings },
-      { href: `/${locale}/activity`, label: c.activity },
-      { href: `/${locale}/billing`, label: c.billing },
-      { href: `/${locale}/data`, label: c.data },
-    ];
+      { href: `/${locale}`, label: c.dashboard, exact: true, roles: operationalRoles },
+      { href: `/${locale}/reservations`, label: c.reservations, roles: reservationRoles },
+      { href: `/${locale}/orders`, label: c.orders, roles: orderRoles },
+      { href: `/${locale}/menu`, label: c.menu, roles: menuRoles },
+      { href: `/${locale}/stock`, label: c.stock, roles: stockRoles },
+      { href: `/${locale}/events`, label: c.events, roles: eventRoles },
+      { href: `/${locale}/customers`, label: c.customers, roles: customerRoles },
+      { href: `/${locale}/insights`, label: c.insights, roles: insightRoles },
+      { href: `/${locale}/notifications`, label: c.notifications, roles: operationalRoles },
+      { href: `/${locale}/team`, label: c.team, roles: adminRoles },
+      { href: `/${locale}/profile`, label: c.profile, roles: adminRoles },
+      { href: `/${locale}/settings`, label: c.settings, roles: adminRoles },
+      { href: `/${locale}/activity`, label: c.activity, roles: adminRoles },
+      { href: `/${locale}/billing`, label: c.billing, roles: billingRoles },
+      { href: `/${locale}/data`, label: c.data, roles: ["owner"] as const },
+    ].filter((link) => hasRole(role, link.roles));
     return <><nav className="sticky top-0 z-40 border-b border-[var(--mandys-border)] bg-[var(--mandys-background)]/95 backdrop-blur" aria-label="Mandy's"><div className="mx-auto flex w-full max-w-[1500px] items-center gap-2 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8"><Link href={`/${locale}`} className="mr-2 shrink-0 text-sm font-bold tracking-[-0.03em]">Mandy&apos;s</Link>{links.map((link) => { const active = link.exact ? pathname === link.href : pathname.startsWith(link.href); return <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "text-[var(--mandys-foreground-muted)] hover:bg-[var(--mandys-surface-muted)] hover:text-[var(--mandys-foreground)]"}`}>{link.label}</Link>; })}<button type="button" onClick={() => void signOut()} disabled={signingOut} className="ml-auto shrink-0 rounded-lg border border-[var(--mandys-border)] px-3 py-2 text-sm font-medium disabled:opacity-60">{signingOut ? "…" : c.logout}</button></div></nav>{children}</>;
   }
 

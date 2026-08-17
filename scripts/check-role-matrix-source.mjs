@@ -3,8 +3,9 @@ import path from "node:path";
 import process from "node:process";
 
 const root = process.cwd();
-const [authSource, teamSource] = await Promise.all([
+const [runtimeAuthSource, packageAuthSource, teamSource] = await Promise.all([
   readFile(path.join(root, "supabase/functions/mandys-auth/index.ts"), "utf8"),
+  readFile(path.join(root, "packages/auth/src/permissions.ts"), "utf8"),
   readFile(path.join(root, "apps/backoffice/src/app/[locale]/team/team-board.tsx"), "utf8"),
 ]);
 
@@ -17,40 +18,40 @@ const expected = {
     stock: ["read", "create", "update", "adjust"], analytics: ["read"], settings: ["read", "update"],
   },
   reception: {
-    restaurant: ["read"], menu: ["read"], reservation: ["read", "create", "update", "cancel"],
+    restaurant: [], menu: ["read"], reservation: ["read", "create", "update", "cancel"],
     customer: ["read", "create", "update"], event: ["read", "create", "update"], order: ["read", "create", "update"],
-    stock: ["read"], analytics: ["read"], settings: ["read"],
+    stock: [], analytics: ["read"], settings: [],
   },
   kitchen: {
-    restaurant: ["read"], menu: ["read", "update"], reservation: ["read"], customer: [], event: ["read"],
-    order: ["read", "update"], stock: ["read", "update", "adjust"], analytics: [], settings: ["read"],
+    restaurant: [], menu: ["read", "update"], reservation: ["read"], customer: [], event: [],
+    order: ["read", "update"], stock: ["read", "update", "adjust"], analytics: [], settings: [],
   },
   staff: {
-    restaurant: ["read"], menu: ["read"], reservation: ["read"], customer: [], event: ["read"],
-    order: ["read", "update"], stock: ["read"], analytics: [], settings: ["read"],
+    restaurant: [], menu: ["read"], reservation: ["read"], customer: [], event: [],
+    order: ["read", "update"], stock: ["read"], analytics: [], settings: [],
   },
   marketing: {
-    restaurant: ["read"], menu: ["read", "update", "publish"], reservation: [], customer: [],
-    event: ["read", "create", "update"], order: [], stock: [], analytics: ["read"], settings: ["read"],
+    restaurant: [], menu: ["read", "update", "publish"], reservation: [], customer: [],
+    event: ["read", "create", "update"], order: [], stock: [], analytics: ["read"], settings: [],
   },
   accounting: {
-    restaurant: ["read"], menu: ["read"], reservation: ["read"], customer: [], event: ["read"],
-    order: ["read"], stock: ["read"], analytics: ["read"], settings: ["read"],
+    restaurant: [], menu: ["read"], reservation: [], customer: [], event: [],
+    order: [], stock: ["read"], analytics: ["read"], settings: [],
   },
 };
 
-function objectBlock(marker) {
-  const start = authSource.indexOf(marker);
+function objectBlock(source, marker) {
+  const start = source.indexOf(marker);
   if (start < 0) throw new Error(`Missing role declaration: ${marker}`);
-  const open = authSource.indexOf("{", start + marker.length);
+  const open = source.indexOf("{", start + marker.length);
   if (open < 0) throw new Error(`Missing object body after ${marker}`);
   let depth = 0;
-  for (let index = open; index < authSource.length; index += 1) {
-    const char = authSource[index];
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
     if (char === "{") depth += 1;
     if (char === "}") {
       depth -= 1;
-      if (depth === 0) return authSource.slice(open + 1, index);
+      if (depth === 0) return source.slice(open + 1, index);
     }
   }
   throw new Error(`Unclosed object body after ${marker}`);
@@ -80,21 +81,30 @@ function assertMatrix(label, actual, wanted) {
   if (left !== right) throw new Error(`${label} permission matrix drifted. Expected ${right}; got ${left}`);
 }
 
-assertMatrix("operationalFull", parsePermissions(objectBlock("const operationalFull =")), expected.operationalFull);
-for (const role of ["reception", "kitchen", "staff", "marketing", "accounting"]) {
-  assertMatrix(role, parsePermissions(objectBlock(`const ${role} = ac.newRole(`)), expected[role]);
+function validateAuthSource(source, label, exported) {
+  const fullMarker = exported ? "const operationalFull =" : "const operationalFull =";
+  assertMatrix(`${label}.operationalFull`, parsePermissions(objectBlock(source, fullMarker)), expected.operationalFull);
+  for (const role of ["reception", "kitchen", "staff", "marketing", "accounting"]) {
+    const marker = exported ? `export const ${role} = ac.newRole(` : `const ${role} = ac.newRole(`;
+    assertMatrix(`${label}.${role}`, parsePermissions(objectBlock(source, marker)), expected[role]);
+  }
+
+  const ownerMarker = exported ? "export const owner = ac.newRole(" : "const owner = ac.newRole(";
+  const managerMarker = exported ? "export const manager = ac.newRole(" : "const manager = ac.newRole(";
+  const ownerBlock = objectBlock(source, ownerMarker);
+  const managerBlock = objectBlock(source, managerMarker);
+  if (!ownerBlock.includes("...ownerAc.statements") || !ownerBlock.includes("...operationalFull")) {
+    throw new Error(`${label}.owner must combine ownerAc.statements with operationalFull`);
+  }
+  if (!managerBlock.includes("...adminAc.statements") || !managerBlock.includes("...operationalFull")) {
+    throw new Error(`${label}.manager must combine adminAc.statements with operationalFull`);
+  }
 }
 
-const ownerBlock = objectBlock("const owner = ac.newRole(");
-const managerBlock = objectBlock("const manager = ac.newRole(");
-if (!ownerBlock.includes("...ownerAc.statements") || !ownerBlock.includes("...operationalFull")) {
-  throw new Error("owner must combine ownerAc.statements with operationalFull");
-}
-if (!managerBlock.includes("...adminAc.statements") || !managerBlock.includes("...operationalFull")) {
-  throw new Error("manager must combine adminAc.statements with operationalFull");
-}
+validateAuthSource(runtimeAuthSource, "runtime", false);
+validateAuthSource(packageAuthSource, "package", true);
 
-const registration = authSource.match(/roles:\s*\{([^}]+)\}/s)?.[1] ?? "";
+const registration = runtimeAuthSource.match(/roles:\s*\{([^}]+)\}/s)?.[1] ?? "";
 for (const role of ["owner", "manager", "reception", "kitchen", "staff", "marketing", "accounting"]) {
   if (!new RegExp(`\\b${role}\\b`).test(registration)) throw new Error(`Better Auth registration is missing ${role}`);
 }
@@ -107,4 +117,4 @@ if (JSON.stringify(uiRoles) !== JSON.stringify(expectedUiRoles)) {
   throw new Error(`Team UI roles drifted. Expected ${expectedUiRoles.join(", ")}; got ${uiRoles.join(", ")}`);
 }
 
-console.log("Validated Mandy's Better Auth operational role matrix and Team UI roles.");
+console.log("Validated Mandy's runtime/package Better Auth role matrix and Team UI roles.");

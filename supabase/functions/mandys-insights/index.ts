@@ -1,16 +1,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import postgres from "npm:postgres@3.4.7";
 
-const projectUrl = "https://dbfmjdissqsdhxhmqkqp.supabase.co";
-const authSessionUrl = `${projectUrl}/functions/v1/mandys-auth/api/auth/get-session`;
-const connectionString = Deno.env.get("SUPABASE_DB_URL");
-if (!connectionString) throw new Error("SUPABASE_DB_URL is required");
-
-const sql = postgres(connectionString,{prepare:false,max:2,idle_timeout:20,connect_timeout:10,connection:{application_name:"mandys-insights-edge",search_path:"mandys,public"}});
+const projectUrl="https://dbfmjdissqsdhxhmqkqp.supabase.co";const authSessionUrl=`${projectUrl}/functions/v1/mandys-auth/api/auth/get-session`;const connectionString=Deno.env.get("SUPABASE_DB_URL");if(!connectionString)throw new Error("SUPABASE_DB_URL is required");
+const sql=postgres(connectionString,{prepare:false,max:2,idle_timeout:20,connect_timeout:10,connection:{application_name:"mandys-insights-edge",search_path:"mandys,public"}});
 type Context={userId:string;organizationId:string;role:string}; type Result={status?:number;body:unknown};
 function json(body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"}});} function fail(status:number,error:string,message:string):Result{return{status,body:{error,message}};}
 async function context(request:Request):Promise<Context|Result>{const cookie=request.headers.get("cookie");if(!cookie)return fail(401,"UNAUTHENTICATED","Authentication is required");const response=await fetch(authSessionUrl,{headers:{cookie,accept:"application/json"},cache:"no-store"});if(!response.ok)return fail(401,"UNAUTHENTICATED","Session is invalid or expired");const body=await response.json().catch(()=>null) as any;const userId=body?.user?.id;const organizationId=body?.session?.activeOrganizationId;if(typeof userId!=="string"||typeof organizationId!=="string")return fail(401,"TENANT_CONTEXT_REQUIRED","Select an active restaurant organization");const members=await sql<{role:string}[]>`select role from mandys.member where organization_id=${organizationId} and user_id=${userId} limit 1`;const role=members[0]?.role;if(!role)return fail(403,"FORBIDDEN","Organization membership is required");return{userId,organizationId,role};}
-function canRead(ctx:Context){return ["owner","manager","accounting","marketing"].includes(ctx.role);}
+function canRead(ctx:Context){return ["owner","manager","reception","accounting","marketing"].includes(ctx.role);}
 async function assertEnabled(tx:any,ctx:Context){const rows=await tx<any[]>`select status from mandys.module_entitlements where organization_id=${ctx.organizationId} and module_key='analytics' limit 1`;if(!rows[0]||rows[0].status==="disabled")throw new Error("ANALYTICS_DISABLED");}
 
 async function insights(ctx:Context,url:URL):Promise<Result>{if(!canRead(ctx))return fail(403,"FORBIDDEN","Your role cannot access analytics");const daysRaw=Number(url.searchParams.get("days")??30);const days=[7,30,90].includes(daysRaw)?daysRaw:30;return sql.begin(async tx=>{await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;await assertEnabled(tx,ctx);const fromInterval=`${days} days`;const [settings,reservationRows,eventRows,orderRows,customerRows,menuRows,stockRows,trendRows]=await Promise.all([
