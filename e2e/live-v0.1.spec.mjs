@@ -63,7 +63,7 @@ for (const [locale, localeLabel, bookingTitle, bookingCta] of locales) {
 
     expect(response?.ok()).toBeTruthy();
     await expect(page.getByText(liveMarker, { exact: false }).first()).toBeVisible();
-    await expect(page.getByText(localeLabel, { exact: true })).toBeVisible();
+    await expect(page.locator("summary").filter({ hasText: localeLabel })).toHaveText(localeLabel);
     await expect(page.getByRole("heading", { name: bookingTitle, exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: bookingCta, exact: true }).first()).toBeVisible();
     await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
