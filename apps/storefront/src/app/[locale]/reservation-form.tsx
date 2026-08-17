@@ -3,6 +3,8 @@
 import type { Locale } from "@mandys/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { createReservationTimeFormatter } from "../../lib/reservation-time";
+
 type Slot = { startsAt: string; endsAt: string; available: boolean; remainingCapacity: number };
 type AvailabilityResponse = { data: { timezone: string; durationMinutes: number; slots: Slot[] } };
 
@@ -48,12 +50,16 @@ export function ReservationForm({ locale, disabled }: { locale: Locale; disabled
   const formRef = useRef<HTMLFormElement>(null);
   const [date, setDate] = useState(dateInputValue(1));
   const [partySize, setPartySize] = useState(2);
+  const [timezone, setTimezone] = useState("UTC");
   const [slots, setSlots] = useState<Slot[]>([]);
   const [slotLoading, setSlotLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(disabled ? c.unavailable : null);
   const [success, setSuccess] = useState(false);
-  const timeFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }), [locale]);
+  const timeFormatter = useMemo(
+    () => createReservationTimeFormatter(locale, timezone),
+    [locale, timezone],
+  );
 
   useEffect(() => {
     if (disabled || !date || partySize < 1) return;
@@ -66,7 +72,10 @@ export function ReservationForm({ locale, disabled }: { locale: Locale; disabled
         return response.json() as Promise<AvailabilityResponse>;
       })
       .then(body => {
-        if (!cancelled) setSlots(body.data.slots.filter(slot => slot.available));
+        if (!cancelled) {
+          setTimezone(body.data.timezone);
+          setSlots(body.data.slots.filter(slot => slot.available));
+        }
       })
       .catch(() => {
         if (!cancelled) {
