@@ -11,7 +11,7 @@ concurrency:
 jobs:
   readiness:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -21,3 +21,5 @@ jobs:
           node-version: 24
       - name: Verify live Mandy's targets
         run: node scripts/verify-v0.1-deployments.mjs
+      - name: Verify critical Edge runtimes and pre-launch safety switches
+        run: node scripts/verify-edge-runtime-health.mjs
