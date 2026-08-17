@@ -36,12 +36,19 @@ describe("storefront runtime resolution", () => {
     expect(resolveStorefrontHostname("localhost")).toBe("demo.mandys.local");
   });
 
+  it("normalizes stale hosted deployment overrides to the live demo tenant", () => {
+    process.env.MANDYS_STOREFRONT_HOSTNAME = "mandy-store-front.netlify.app";
+    expect(resolveStorefrontHostname("custom.example")).toBe("demo.mandys.local");
+    process.env.MANDYS_STOREFRONT_HOSTNAME = "preview-abc.vercel.app";
+    expect(resolveStorefrontHostname("custom.example")).toBe("demo.mandys.local");
+  });
+
   it("preserves a real restaurant custom domain", () => {
     delete process.env.MANDYS_STOREFRONT_HOSTNAME;
     expect(resolveStorefrontHostname("restaurante.example")).toBe("restaurante.example");
   });
 
-  it("allows an explicit deployment hostname override", () => {
+  it("allows an explicit custom deployment hostname override", () => {
     process.env.MANDYS_STOREFRONT_HOSTNAME = "demo.restaurant.example";
     expect(resolveStorefrontHostname("preview.vercel.app")).toBe("demo.restaurant.example");
   });
