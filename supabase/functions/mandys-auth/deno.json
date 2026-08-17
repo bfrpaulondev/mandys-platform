@@ -1,0 +1,13 @@
+{
+  "imports": {
+    "better-auth": "npm:better-auth@1.6.0",
+    "better-auth/api": "npm:better-auth@1.6.0/api",
+    "better-auth/adapters/drizzle": "npm:better-auth@1.6.0/adapters/drizzle",
+    "better-auth/plugins": "npm:better-auth@1.6.0/plugins",
+    "better-auth/plugins/access": "npm:better-auth@1.6.0/plugins/access",
+    "better-auth/plugins/organization/access": "npm:better-auth@1.6.0/plugins/organization/access",
+    "drizzle-orm/postgres-js": "npm:drizzle-orm@0.45.2/postgres-js",
+    "drizzle-orm/pg-core": "npm:drizzle-orm@0.45.2/pg-core",
+    "postgres": "npm:postgres@3.4.7"
+  }
+}
