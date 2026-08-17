@@ -2,7 +2,7 @@ import { isLocale } from "@mandys/i18n";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { MenuBoard } from "./menu-board";
+import { MenuBoardV2 } from "./menu-board-v2";
 
 const copy = {
   "pt-PT": { back: "Voltar ao painel", title: "Menu" },
@@ -34,7 +34,7 @@ export default async function MenuPage({ params }: { params: Promise<{ locale: s
         </div>
       </header>
 
-      <MenuBoard locale={locale} />
+      <MenuBoardV2 locale={locale} />
     </main>
   );
 }
