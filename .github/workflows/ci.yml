@@ -83,3 +83,43 @@ jobs:
           done
           echo "Netlify targets did not reach V0.1 smoke readiness after deployment grace period." >&2
           exit 1
+
+  live-browser-e2e:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: live-readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Prepare Playwright runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .playwright-runtime
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs .playwright-runtime/
+          cd .playwright-runtime
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.62.1
+          npx playwright install --with-deps chromium
+
+      - name: Run live browser E2E
+        working-directory: .playwright-runtime
+        run: npx playwright test live-v0.1.spec.mjs --config=playwright.config.mjs
+
+      - name: Upload browser test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-browser-e2e-${{ github.run_id }}
+          path: |
+            .playwright-runtime/playwright-report
+            .playwright-runtime/test-results
+          if-no-files-found: ignore
+          retention-days: 7
