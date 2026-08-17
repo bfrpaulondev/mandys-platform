@@ -215,29 +215,43 @@ const auth = betterAuth({
   },
 });
 
-const corsHeaders = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "content-type, cookie, origin",
-  "access-control-allow-methods": "GET,POST,OPTIONS",
-};
+const trustedCorsOrigin = "https://mandys.pt";
+function corsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("origin");
+  const headers: Record<string, string> = {
+    "access-control-allow-headers": "content-type, cookie, origin, x-mandys-gateway",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "vary": "origin",
+  };
+  if (origin === trustedCorsOrigin) headers["access-control-allow-origin"] = origin;
+  return headers;
+}
 
 Deno.serve(async (request: Request) => {
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  const cors = corsHeaders(request);
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   const incomingUrl = new URL(request.url);
   if (incomingUrl.pathname.endsWith("/health") || incomingUrl.pathname.endsWith("/mandys-auth")) {
     return new Response(JSON.stringify({ ok: true, service: "mandys-auth" }), {
-      headers: { "content-type": "application/json; charset=utf-8", ...corsHeaders },
+      headers: { "content-type": "application/json; charset=utf-8", ...cors },
     });
   }
   const authIndex = incomingUrl.pathname.indexOf("/api/auth");
   if (authIndex === -1) {
     return new Response(JSON.stringify({ error: "NOT_FOUND" }), {
       status: 404,
-      headers: { "content-type": "application/json; charset=utf-8", ...corsHeaders },
+      headers: { "content-type": "application/json; charset=utf-8", ...cors },
     });
   }
   const canonicalUrl = new URL(request.url);
   canonicalUrl.pathname = `${basePath}${incomingUrl.pathname.slice(authIndex + "/api/auth".length)}`;
   const canonicalRequest = new Request(canonicalUrl, request);
-  return auth.handler(canonicalRequest);
+  const response = await auth.handler(canonicalRequest);
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(cors)) headers.set(key, value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 });
