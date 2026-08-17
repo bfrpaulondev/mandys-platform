@@ -14,6 +14,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "verify:v0.1": "node scripts/verify-v0.1-deployments.mjs",
     "db:generate": "pnpm --filter @mandys/database db:generate",
     "db:migrate": "pnpm --filter @mandys/database db:migrate",
     "db:studio": "pnpm --filter @mandys/database db:studio"
