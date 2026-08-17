@@ -1,5 +1,6 @@
 const OPERATIONS_UPSTREAM =
   "https://dbfmjdissqsdhxhmqkqp.supabase.co/functions/v1/mandys-operations";
+const TRUSTED_GATEWAY_ORIGIN = "https://mandys.pt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +16,11 @@ async function proxy(request: Request, context: RouteContext): Promise<Response>
   targetUrl.search = incomingUrl.search;
 
   const headers = new Headers();
-  for (const name of ["accept", "content-type", "cookie", "origin", "user-agent"]) {
+  for (const name of ["accept", "content-type", "cookie", "user-agent"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  headers.set("origin", TRUSTED_GATEWAY_ORIGIN);
   headers.set("x-mandys-gateway", "backoffice");
 
   const init: RequestInit = {
