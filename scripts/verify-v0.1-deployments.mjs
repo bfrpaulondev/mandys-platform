@@ -9,10 +9,10 @@ const storefrontLiveMarker =
 const storefrontFallbackMarker = "Maré · Demonstração Mandy's";
 
 const storefrontLocales = [
-  ["pt-PT", "Português (Portugal)"],
-  ["pt-BR", "Português (Brasil)"],
-  ["en", "English"],
-  ["es", "Español"],
+  ["pt-PT", "Português (Portugal)", "Reserve diretamente", "Reservar mesa"],
+  ["pt-BR", "Português (Brasil)", "Reserve diretamente", "Reservar mesa"],
+  ["en", "English", "Book directly", "Book a table"],
+  ["es", "Español", "Reserva directamente", "Reservar mesa"],
 ];
 
 function futureDateValue(offsetDays = 1) {
@@ -47,10 +47,17 @@ const targets = [
     requiredText: ["Mandy", "standalone"],
     requiredContentType: "application/manifest+json",
   },
-  ...storefrontLocales.map(([locale, localeLabel]) => ({
+  ...storefrontLocales.map(([locale, localeLabel, bookingTitle, bookingCta]) => ({
     name: `Storefront ${locale}`,
     url: `${storefrontOrigin}/${locale}`,
-    requiredText: ["Mandy", localeLabel, storefrontLiveMarker],
+    requiredText: [
+      "Mandy",
+      localeLabel,
+      storefrontLiveMarker,
+      bookingTitle,
+      bookingCta,
+      "Mandy's Reserve",
+    ],
     forbiddenText: [storefrontFallbackMarker],
   })),
   {
@@ -78,7 +85,7 @@ for (const target of targets) {
     const response = await fetch(target.url, {
       redirect: "follow",
       signal: controller.signal,
-      headers: { "user-agent": "mandys-v0.1-readiness-check/1.2" },
+      headers: { "user-agent": "mandys-v0.1-readiness-check/1.3" },
     });
     const body = await response.text();
     const normalizedBody = body.toLocaleLowerCase();
@@ -124,5 +131,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nPublic deployment smoke checks passed with a DB-backed Storefront and live reservation availability gateway. Browser E2E is still required before V0.1 is declared ready.",
+  "\nPublic deployment smoke checks passed with a DB-backed Storefront, localized reservation surface and live reservation availability gateway. Browser E2E is still required before V0.1 is declared ready.",
 );
