@@ -26,7 +26,8 @@ export function resolveStorefrontHostname(host: string | null): string | null {
   if (
     normalized === "localhost" ||
     normalized === "127.0.0.1" ||
-    normalized.endsWith(".vercel.app")
+    normalized.endsWith(".vercel.app") ||
+    normalized.endsWith(".netlify.app")
   ) {
     return DEMO_HOSTNAME;
   }
