@@ -1,14 +1,14 @@
 const SUPABASE_FUNCTIONS_ORIGIN = "https://dbfmjdissqsdhxhmqkqp.supabase.co/functions/v1";
 const TRUSTED_GATEWAY_ORIGIN = "https://mandys.pt";
 
-const services: Record<string, string> = {
-  menu: "mandys-menu",
-  reservations: "mandys-reservations",
-  crm: "mandys-crm",
-  orders: "mandys-orders",
-  stock: "mandys-stock",
-  notifications: "mandys-notifications",
-};
+const services = new Map<string, string>([
+  ["menu", "mandys-menu"],
+  ["reservations", "mandys-reservations"],
+  ["crm", "mandys-crm"],
+  ["orders", "mandys-orders"],
+  ["stock", "mandys-stock"],
+  ["notifications", "mandys-notifications"],
+]);
 
 export const config = {
   path: [
@@ -40,7 +40,7 @@ export function operationalTargetFor(request: Request): { target: URL; service: 
   if (segments.length < 3 || segments[0] !== "api") return null;
 
   const serviceKey = segments[1];
-  const service = services[serviceKey];
+  const service = services.get(serviceKey);
   if (!service) return null;
 
   // Preserve the browser's serialized path instead of decoding/re-encoding it.
