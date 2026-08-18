@@ -10,3 +10,27 @@ PNPM_FLAGS = "--shamefully-hoist"
 [[edge_functions]]
 function = "dashboard"
 path = "/api/dashboard"
+
+[[edge_functions]]
+function = "operational-runtime"
+path = "/api/menu/*"
+
+[[edge_functions]]
+function = "operational-runtime"
+path = "/api/reservations/*"
+
+[[edge_functions]]
+function = "operational-runtime"
+path = "/api/crm/*"
+
+[[edge_functions]]
+function = "operational-runtime"
+path = "/api/orders/*"
+
+[[edge_functions]]
+function = "operational-runtime"
+path = "/api/stock/*"
+
+[[edge_functions]]
+function = "operational-runtime"
+path = "/api/notifications/*"
