@@ -23,6 +23,8 @@ jobs:
         run: node scripts/verify-v0.1-deployments.mjs
       - name: Verify critical Edge runtimes and pre-launch safety switches
         run: node scripts/verify-edge-runtime-health.mjs
+      - name: Verify public runtime backends directly
+        run: node scripts/verify-v0.1-runtime-backends.mjs
       - name: Prepare focused Playwright runtime
         shell: bash
         run: |
