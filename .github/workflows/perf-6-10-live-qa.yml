@@ -1,0 +1,100 @@
+name: Performance 6-10 live QA
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-6-10-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Wait for stabilized performance release on production
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="https://mandyplataform.netlify.app"
+          ready=0
+          for attempt in {1..24}; do
+            body="$(curl --silent --show-error --retry 2 --retry-all-errors --connect-timeout 10 --max-time 25 "$origin/api/health" || true)"
+            version="$(node -e 'try { const body = JSON.parse(process.argv[1]); process.stdout.write(body.performanceVersion ?? ""); } catch {}' "$body")"
+            echo "Performance release readiness ${attempt}/24: ${version:-none}"
+            if [ "$version" = "perf-6-10-stable-v1" ]; then
+              ready=1
+              break
+            fi
+            sleep 20
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Production never exposed perf-6-10-stable-v1." >&2
+            exit 1
+          fi
+
+      - name: Wait for operational Edge gateway on production
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="https://mandyplataform.netlify.app"
+          ready=0
+          for attempt in {1..20}; do
+            headers="$(mktemp)"
+            code="$(curl --silent --show-error --retry 2 --retry-all-errors --connect-timeout 10 --max-time 25 -D "$headers" -o /dev/null -w '%{http_code}' "$origin/api/menu/v1/menu" || true)"
+            proxy="$(awk 'BEGIN{IGNORECASE=1} /^x-mandys-proxy:/ {gsub("\r",""); print $2}' "$headers" | tail -1)"
+            echo "Operational Edge readiness ${attempt}/20: HTTP ${code:-none}, proxy=${proxy:-none}"
+            if [ "$proxy" = "netlify-edge" ]; then
+              ready=1
+              break
+            fi
+            sleep 30
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Production never exposed the operational Netlify Edge gateway." >&2
+            exit 1
+          fi
+
+      - name: Verify deployment smoke readiness
+        run: node scripts/verify-v0.1-deployments.mjs
+
+      - name: Verify critical Supabase runtimes
+        run: node scripts/verify-edge-runtime-health.mjs
+
+      - name: Prepare Playwright runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p playwright-runtime
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/authenticated-v0.1.spec.mjs e2e/billing-fail-closed.spec.mjs e2e/roles-v0.1.spec.mjs e2e/performance-v0.2.spec.mjs playwright-runtime/
+          cd playwright-runtime
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.62.1
+          npx playwright install --with-deps chromium
+
+      - name: Run full live regression and performance 6-10 QA
+        working-directory: playwright-runtime
+        run: npx playwright test live-v0.1.spec.mjs authenticated-v0.1.spec.mjs billing-fail-closed.spec.mjs roles-v0.1.spec.mjs performance-v0.2.spec.mjs --config=playwright.config.mjs
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-6-10-live-${{ github.run_id }}
+          path: |
+            playwright-runtime/playwright-report
+            playwright-runtime/test-results
+          if-no-files-found: ignore
+          retention-days: 7
