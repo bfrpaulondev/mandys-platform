@@ -73,10 +73,10 @@ jobs:
           timing="$(grep -i '^server-timing:' "$work/dashboard.headers" | tr -d '\r')"
           echo "$timing"
           echo "$timing" | grep -q 'mandys_session'
-          echo "$timing" | grep -q 'mandys_db'
+          echo "$timing" | grep -q 'mandys_rpc'
           echo "$timing" | grep -q 'mandys_edge'
           echo "$timing" | grep -q 'mandys_netlify_edge'
-          if echo "$timing" | grep -q 'mandys_auth\|mandys_member\|mandys_gateway'; then
+          if echo "$timing" | grep -q 'mandys_auth\|mandys_member\|mandys_gateway\|mandys_db'; then
             echo "Legacy dashboard waterfall marker detected" >&2
             exit 1
           fi
