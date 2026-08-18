@@ -161,15 +161,29 @@ export function ReservationsBoardV2({ locale }: { locale: Locale }) {
   }
 
   async function changeStatus(reservationId: string, status: ReservationStatus) {
-    setBusyReservationId(reservationId); setError(null);
+    const previous = reservations.find((reservation) => reservation.id === reservationId);
+    if (!previous || busyReservationId === reservationId) return;
+
+    setBusyReservationId(reservationId);
+    setError(null);
+    setReservations((current) => current.map((reservation) => reservation.id === reservationId ? { ...reservation, status } : reservation));
+
     try {
       const response = await fetch(`/api/reservations/v1/reservations/${reservationId}/status`, {
-        method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }),
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status }),
       });
       if (!response.ok) throw new Error(await readError(response));
-      await Promise.all([loadReservations(), loadAvailability(date, partySize)]);
-    } catch (statusError) { setError(statusError instanceof Error ? statusError.message : "Unexpected error"); }
-    finally { setBusyReservationId(null); }
+      void loadAvailability(date, partySize);
+    } catch (statusError) {
+      setReservations((current) => current.map((reservation) => reservation.id === reservationId ? previous : reservation));
+      setError(statusError instanceof Error ? statusError.message : "Unexpected error");
+      void loadAvailability(date, partySize);
+    } finally {
+      setBusyReservationId(null);
+    }
   }
 
   const today = localDateValue();
@@ -218,7 +232,7 @@ export function ReservationsBoardV2({ locale }: { locale: Locale }) {
           {loading ? <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</div>
           : reservations.length === 0 ? <div className="rounded-[var(--mandys-radius-lg)] border border-dashed border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-8 text-center text-sm text-[var(--mandys-foreground-muted)]">{c.empty}</div>
           : <div className="space-y-3">{reservations.map(reservation => (
-            <article key={reservation.id} className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-5 shadow-[var(--mandys-shadow-sm)]">
+            <article key={reservation.id} aria-busy={busyReservationId === reservation.id} className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-5 shadow-[var(--mandys-shadow-sm)]">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{reservation.guestName}</h3><span className="rounded-full bg-[var(--mandys-surface-muted)] px-2.5 py-1 text-xs font-medium">{c[reservation.status]}</span></div>
                   <p className="mt-1 text-sm text-[var(--mandys-foreground-muted)]">{dateFormatter.format(new Date(reservation.startsAt))} · {reservation.partySize} {c.partySize.toLowerCase()}</p>
