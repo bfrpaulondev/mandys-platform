@@ -13,6 +13,11 @@ type StoredResponse = {
   expiresAt: number;
 };
 
+type InFlightEntry = {
+  generation: number;
+  promise: Promise<StoredResponse | null>;
+};
+
 const MAX_ENTRIES = 64;
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
@@ -72,14 +77,22 @@ export function installBackofficeDataCache(): () => void {
 
   const nativeFetch = window.fetch.bind(window);
   const cache = new Map<string, { namespace: string; response: StoredResponse }>();
-  const inFlight = new Map<string, Promise<StoredResponse | null>>();
+  const inFlight = new Map<string, InFlightEntry>();
+  let generation = 0;
+
+  function advanceGeneration(): number {
+    generation += 1;
+    return generation;
+  }
 
   function clearAll(): void {
+    advanceGeneration();
     cache.clear();
     inFlight.clear();
   }
 
   function invalidate(namespace: string): void {
+    advanceGeneration();
     for (const [key, entry] of cache) {
       if (entry.namespace === namespace || entry.namespace === "dashboard") cache.delete(key);
     }
@@ -134,11 +147,13 @@ export function installBackofficeDataCache(): () => void {
     if (cached) cache.delete(key);
 
     const pending = inFlight.get(key);
-    if (pending) {
-      const stored = await pending;
+    if (pending && pending.generation === generation) {
+      const stored = await pending.promise;
       return stored ? responseFromStored(stored, "deduped") : nativeFetch(input, init);
     }
+    if (pending) inFlight.delete(key);
 
+    const requestGeneration = generation;
     const network = (async (): Promise<StoredResponse | null> => {
       const response = await nativeFetch(input, init);
       if (response.status === 401 || response.status === 403) clearAll();
@@ -146,19 +161,20 @@ export function installBackofficeDataCache(): () => void {
       if (!contentType.includes("application/json")) return null;
       const stored = await snapshotResponse(response, policy.ttlMs);
       if (!stored) return null;
-      if (response.ok) {
+      if (response.ok && requestGeneration === generation) {
         cache.set(key, { namespace: policy.namespace, response: stored });
         trim();
       }
       return stored;
     })();
 
-    inFlight.set(key, network);
+    inFlight.set(key, { generation: requestGeneration, promise: network });
     try {
       const stored = await network;
       return stored ? responseFromStored(stored, "miss") : nativeFetch(input, init);
     } finally {
-      inFlight.delete(key);
+      const current = inFlight.get(key);
+      if (current?.promise === network) inFlight.delete(key);
     }
   }
 

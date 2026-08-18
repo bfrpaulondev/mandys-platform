@@ -4,7 +4,7 @@ import type { Locale } from "@mandys/i18n";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "../../lib/auth-client";
 
@@ -26,6 +26,12 @@ const copy = {
   es: { loading: "Verificando la sesión…", unavailable: "No se pudo verificar la sesión. Actualiza la página para intentarlo de nuevo.", dashboard: "Panel", reservations: "Reservas", orders: "Pedidos", menu: "Menú", stock: "Stock", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificaciones", team: "Equipo", profile: "Perfil", settings: "Operación", activity: "Actividad", billing: "Plan", data: "Datos", logout: "Salir" },
 } as const satisfies Record<Locale, Record<string, string>>;
 
+type ProtectedContextResponse = {
+  data?: { currentRole?: string };
+  error?: string;
+  message?: string;
+};
+
 function hasRole(role: string | null, allowed: readonly string[]) {
   return role !== null && allowed.includes(role);
 }
@@ -34,44 +40,80 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
   const pathname = usePathname();
   const router = useRouter();
   const isLogin = pathname.endsWith("/login");
+  const checkedRef = useRef(false);
   const [state, setState] = useState<"checking" | "ready" | "unavailable">(isLogin ? "ready" : "checking");
   const [role, setRole] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
-    if (isLogin) { setState("ready"); setRole(null); return; }
+    if (isLogin) {
+      checkedRef.current = false;
+      setState("ready");
+      setRole(null);
+      return;
+    }
+    if (checkedRef.current) return;
+    checkedRef.current = true;
+
     let cancelled = false;
     setState("checking");
     void (async () => {
       try {
-        const sessionResult = await authClient.getSession();
-        if (cancelled) return;
-        if (sessionResult.error) { setState("unavailable"); return; }
-        if (!sessionResult.data) { router.replace(`/${locale}/login`); return; }
+        const onboardingPath = `/${locale}/onboarding`;
+        const loginPath = `/${locale}/login`;
 
-        if (!sessionResult.data.session.activeOrganizationId) {
+        if (pathname.startsWith(onboardingPath)) {
+          const sessionResult = await authClient.getSession();
+          if (cancelled) return;
+          if (sessionResult.error) { setState("unavailable"); return; }
+          if (!sessionResult.data) { router.replace(loginPath); return; }
           setRole(null);
           setState("ready");
           return;
         }
 
-        const roleResult = await authClient.organization.getActiveMemberRole();
+        const endpoint = pathname === `/${locale}` ? "/api/dashboard" : "/api/runtime/v1/core";
+        const response = await fetch(endpoint, { credentials: "include" });
+        const body = (await response.json().catch(() => null)) as ProtectedContextResponse | null;
         if (cancelled) return;
-        if (roleResult.error) { setState("unavailable"); return; }
-        const activeRole = roleResult.data?.role;
-        setRole(Array.isArray(activeRole) ? (activeRole[0] ?? null) : (activeRole ?? null));
+
+        if (response.status === 401 && body?.error === "TENANT_CONTEXT_REQUIRED") {
+          router.replace(onboardingPath);
+          return;
+        }
+        if (response.status === 401) {
+          router.replace(loginPath);
+          return;
+        }
+        if (!response.ok) {
+          setState("unavailable");
+          return;
+        }
+
+        const activeRole = body?.data?.currentRole;
+        if (typeof activeRole !== "string" || activeRole.length === 0) {
+          setState("unavailable");
+          return;
+        }
+        setRole(activeRole);
         setState("ready");
       } catch {
         if (!cancelled) setState("unavailable");
       }
     })();
     return () => { cancelled = true; };
-  }, [isLogin, locale, router]);
+  }, [isLogin, locale, pathname, router]);
 
   async function signOut() {
     setSigningOut(true);
-    try { await authClient.signOut(); router.replace(`/${locale}/login`); router.refresh(); }
-    finally { setSigningOut(false); }
+    try {
+      await authClient.signOut();
+      checkedRef.current = false;
+      router.replace(`/${locale}/login`);
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
   }
 
   if (state === "ready" && isLogin) return children;
@@ -95,8 +137,35 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
       { href: `/${locale}/billing`, label: c.billing, roles: billingRoles },
       { href: `/${locale}/data`, label: c.data, roles: ["owner"] as const },
     ].filter((link) => hasRole(role, link.roles));
-    return <><nav className="sticky top-0 z-40 border-b border-[var(--mandys-border)] bg-[var(--mandys-background)]/95 backdrop-blur" aria-label="Mandy's"><div className="mx-auto flex w-full max-w-[1500px] items-center gap-2 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8"><Link href={`/${locale}`} className="mr-2 shrink-0 text-sm font-bold tracking-[-0.03em]">Mandy&apos;s</Link>{links.map((link) => { const active = link.exact ? pathname === link.href : pathname.startsWith(link.href); return <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "text-[var(--mandys-foreground-muted)] hover:bg-[var(--mandys-surface-muted)] hover:text-[var(--mandys-foreground)]"}`}>{link.label}</Link>; })}<button type="button" onClick={() => void signOut()} disabled={signingOut} className="ml-auto shrink-0 rounded-lg border border-[var(--mandys-border)] px-3 py-2 text-sm font-medium disabled:opacity-60">{signingOut ? "…" : c.logout}</button></div></nav>{children}</>;
+
+    return (
+      <>
+        <nav className="sticky top-0 z-40 border-b border-[var(--mandys-border)] bg-[var(--mandys-background)]/95 backdrop-blur" aria-label="Mandy's">
+          <div className="mx-auto flex w-full max-w-[1500px] items-center gap-2 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8">
+            <Link href={`/${locale}`} className="mr-2 shrink-0 text-sm font-bold tracking-[-0.03em]">Mandy&apos;s</Link>
+            {links.map((link) => {
+              const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
+              return (
+                <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "text-[var(--mandys-foreground-muted)] hover:bg-[var(--mandys-surface-muted)] hover:text-[var(--mandys-foreground)]"}`}>
+                  {link.label}
+                </Link>
+              );
+            })}
+            <button type="button" onClick={() => void signOut()} disabled={signingOut} className="ml-auto shrink-0 rounded-lg border border-[var(--mandys-border)] px-3 py-2 text-sm font-medium disabled:opacity-60">
+              {signingOut ? "…" : c.logout}
+            </button>
+          </div>
+        </nav>
+        {children}
+      </>
+    );
   }
 
-  return <main className="grid min-h-screen place-items-center px-6"><div className="max-w-md rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-center shadow-[var(--mandys-shadow-sm)]"><p className="text-sm text-[var(--mandys-foreground-muted)]">{state === "checking" ? copy[locale].loading : copy[locale].unavailable}</p></div></main>;
+  return (
+    <main className="grid min-h-screen place-items-center px-6">
+      <div className="max-w-md rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-center shadow-[var(--mandys-shadow-sm)]">
+        <p className="text-sm text-[var(--mandys-foreground-muted)]">{state === "checking" ? copy[locale].loading : copy[locale].unavailable}</p>
+      </div>
+    </main>
+  );
 }
