@@ -1,4 +1,4 @@
-import { forwardRuntimeRequest, upstreamUrl } from "../../../../../lib/runtime-proxy";
+import { forwardRuntimeRequest, upstreamUrl } from "../../../../lib/runtime-proxy";
 
 const ORDERS_UPSTREAM = "https://dbfmjdissqsdhxhmqkqp.supabase.co/functions/v1/mandys-orders";
 
