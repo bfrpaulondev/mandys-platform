@@ -18,12 +18,14 @@ const customerRoles = ["owner", "manager", "reception"] as const;
 const insightRoles = ["owner", "manager", "reception", "marketing", "accounting"] as const;
 const adminRoles = ["owner", "manager"] as const;
 const billingRoles = ["owner", "manager", "accounting"] as const;
+const sessionRequestTimeoutMs = 8_000;
+const sessionRequestAttempts = 2;
 
 const copy = {
-  "pt-PT": { loading: "A verificar sessão…", unavailable: "Não foi possível verificar a sessão. Atualize a página para tentar novamente.", dashboard: "Painel", reservations: "Reservas", orders: "Pedidos", menu: "Menu", stock: "Stock", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificações", team: "Equipa", profile: "Perfil", settings: "Operação", activity: "Atividade", billing: "Plano", data: "Dados", logout: "Sair" },
-  "pt-BR": { loading: "Verificando sessão…", unavailable: "Não foi possível verificar a sessão. Atualize a página para tentar novamente.", dashboard: "Painel", reservations: "Reservas", orders: "Pedidos", menu: "Cardápio", stock: "Estoque", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificações", team: "Equipe", profile: "Perfil", settings: "Operação", activity: "Atividade", billing: "Plano", data: "Dados", logout: "Sair" },
-  en: { loading: "Checking session…", unavailable: "We couldn't verify the session. Refresh the page to try again.", dashboard: "Dashboard", reservations: "Reservations", orders: "Orders", menu: "Menu", stock: "Stock", events: "Events", customers: "Customers", insights: "Insights", notifications: "Notifications", team: "Team", profile: "Profile", settings: "Operations", activity: "Activity", billing: "Plan", data: "Data", logout: "Sign out" },
-  es: { loading: "Verificando la sesión…", unavailable: "No se pudo verificar la sesión. Actualiza la página para intentarlo de nuevo.", dashboard: "Panel", reservations: "Reservas", orders: "Pedidos", menu: "Menú", stock: "Stock", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificaciones", team: "Equipo", profile: "Perfil", settings: "Operación", activity: "Actividad", billing: "Plan", data: "Datos", logout: "Salir" },
+  "pt-PT": { loading: "A verificar sessão…", unavailable: "Não foi possível verificar a sessão.", retry: "Tentar novamente", dashboard: "Painel", reservations: "Reservas", orders: "Pedidos", menu: "Menu", stock: "Stock", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificações", team: "Equipa", profile: "Perfil", settings: "Operação", activity: "Atividade", billing: "Plano", data: "Dados", logout: "Sair" },
+  "pt-BR": { loading: "Verificando sessão…", unavailable: "Não foi possível verificar a sessão.", retry: "Tentar novamente", dashboard: "Painel", reservations: "Reservas", orders: "Pedidos", menu: "Cardápio", stock: "Estoque", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificações", team: "Equipe", profile: "Perfil", settings: "Operação", activity: "Atividade", billing: "Plano", data: "Dados", logout: "Sair" },
+  en: { loading: "Checking session…", unavailable: "We couldn't verify the session.", retry: "Try again", dashboard: "Dashboard", reservations: "Reservations", orders: "Orders", menu: "Menu", stock: "Stock", events: "Events", customers: "Customers", insights: "Insights", notifications: "Notifications", team: "Team", profile: "Profile", settings: "Operations", activity: "Activity", billing: "Plan", data: "Data", logout: "Sign out" },
+  es: { loading: "Verificando la sesión…", unavailable: "No se pudo verificar la sesión.", retry: "Intentar de nuevo", dashboard: "Panel", reservations: "Reservas", orders: "Pedidos", menu: "Menú", stock: "Stock", events: "Eventos", customers: "Clientes", insights: "Insights", notifications: "Notificaciones", team: "Equipo", profile: "Perfil", settings: "Operación", activity: "Actividad", billing: "Plan", data: "Datos", logout: "Salir" },
 } as const satisfies Record<Locale, Record<string, string>>;
 
 type ProtectedContextResponse = {
@@ -45,6 +47,30 @@ function dataPrefetchForHref(href: string): string | null {
   return null;
 }
 
+async function fetchProtectedContext(): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= sessionRequestAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), sessionRequestTimeoutMs);
+    try {
+      const response = await fetch("/api/dashboard", {
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (response.status < 500 || attempt === sessionRequestAttempts) return response;
+      lastError = new Error(`Dashboard session check returned ${response.status}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === sessionRequestAttempts) throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250 * attempt));
+  }
+  throw lastError ?? new Error("Dashboard session check failed");
+}
+
 export function SessionBoundary({ locale, children }: { locale: Locale; children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -54,6 +80,7 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
   const [state, setState] = useState<"checking" | "ready" | "unavailable">(isLogin ? "ready" : "checking");
   const [role, setRole] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [checkRevision, setCheckRevision] = useState(0);
 
   useEffect(() => {
     if (isLogin) {
@@ -85,7 +112,9 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
         // The fast dashboard snapshot already resolves the opaque Better Auth
         // session, active organization and role in one Edge-backed request.
         // Reuse it for every protected entrypoint instead of calling core again.
-        const response = await fetch("/api/dashboard", { credentials: "include" });
+        // A stalled edge/network request is aborted and retried once so a transient
+        // reset cannot leave the application on "Checking session…" indefinitely.
+        const response = await fetchProtectedContext();
         const body = (await response.json().catch(() => null)) as ProtectedContextResponse | null;
         if (cancelled) return;
 
@@ -114,7 +143,12 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
       }
     })();
     return () => { cancelled = true; };
-  }, [isLogin, locale, pathname, router]);
+  }, [checkRevision, isLogin, locale, pathname, router]);
+
+  function retrySessionCheck() {
+    checkedRef.current = false;
+    setCheckRevision((value) => value + 1);
+  }
 
   function warmNavigation(href: string) {
     router.prefetch(href);
@@ -184,10 +218,16 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
     );
   }
 
+  const c = copy[locale];
   return (
     <main className="grid min-h-screen place-items-center px-6">
       <div className="max-w-md rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-center shadow-[var(--mandys-shadow-sm)]">
-        <p className="text-sm text-[var(--mandys-foreground-muted)]">{state === "checking" ? copy[locale].loading : copy[locale].unavailable}</p>
+        <p className="text-sm text-[var(--mandys-foreground-muted)]">{state === "checking" ? c.loading : c.unavailable}</p>
+        {state === "unavailable" ? (
+          <button type="button" onClick={retrySessionCheck} className="mt-4 rounded-xl border border-[var(--mandys-border)] px-4 py-2 text-sm font-medium">
+            {c.retry}
+          </button>
+        ) : null}
       </div>
     </main>
   );

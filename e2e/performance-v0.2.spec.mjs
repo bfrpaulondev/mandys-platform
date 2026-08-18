@@ -105,10 +105,19 @@ async function cleanup(page, identity) {
   }
 }
 
-function assertOperationalEdge(response, label) {
-  expect(response.ok(), `${label} returned ${response.status()}`).toBeTruthy();
+async function assertOperationalEdge(response, label, { allowModuleDisabled = false } = {}) {
   expect(response.headers()["x-mandys-proxy"], `${label} did not use Netlify Edge`).toBe("netlify-edge");
   expect(response.headers()["server-timing"] ?? "", `${label} lacks Edge timing`).toContain("mandys_netlify_edge");
+
+  if (response.ok()) return;
+  const body = await response.json().catch(() => ({}));
+  const expectedDisabled = allowModuleDisabled
+    && response.status() === 403
+    && ["ORDERS_DISABLED", "MODULE_DISABLED"].includes(body?.error);
+  expect(
+    expectedDisabled,
+    `${label} returned ${response.status()}: ${JSON.stringify(body)}`,
+  ).toBeTruthy();
 }
 
 test("performance sprint 6-10 is active on production", async ({ page }) => {
@@ -123,19 +132,22 @@ test("performance sprint 6-10 is active on production", async ({ page }) => {
     const now = new Date();
     const to = new Date(now.getTime() + 14 * 24 * 60 * 60_000);
     const operationalReads = [
-      ["menu", "/api/menu/v1/menu"],
-      ["reservations", `/api/reservations/v1/reservations?from=${encodeURIComponent(now.toISOString())}&to=${encodeURIComponent(to.toISOString())}&limit=20`],
-      ["crm", "/api/crm/v1/customers"],
-      ["orders", "/api/orders/v1/orders?limit=20"],
-      ["stock", "/api/stock/v1/stock"],
-      ["notifications", "/api/notifications/v1/notifications?limit=20"],
+      ["menu", "/api/menu/v1/menu", false],
+      ["reservations", `/api/reservations/v1/reservations?from=${encodeURIComponent(now.toISOString())}&to=${encodeURIComponent(to.toISOString())}&limit=20`, false],
+      ["crm", "/api/crm/v1/customers", false],
+      // Orders is intentionally an optional entitlement for a freshly onboarded tenant.
+      // The gateway is healthy if it reaches the runtime and preserves its fail-closed
+      // ORDERS_DISABLED response, or returns 200 for a tenant where the module is enabled.
+      ["orders", "/api/orders/v1/orders?limit=20", true],
+      ["stock", "/api/stock/v1/stock", false],
+      ["notifications", "/api/notifications/v1/notifications?limit=20", false],
     ];
 
-    for (const [label, path] of operationalReads) {
+    for (const [label, path, allowModuleDisabled] of operationalReads) {
       const response = await retryRequest(label, () => page.request.get(`${backofficeOrigin}${path}`, {
         headers: { accept: "application/json" },
       }));
-      assertOperationalEdge(response, label);
+      await assertOperationalEdge(response, label, { allowModuleDisabled });
     }
 
     const contextRequests = [];
@@ -161,7 +173,7 @@ test("performance sprint 6-10 is active on production", async ({ page }) => {
     }, { timeout: 20_000 });
     await page.getByRole("link", { name: "Menu", exact: true }).hover();
     const warmed = await warmResponse;
-    assertOperationalEdge(warmed, "menu prefetch");
+    await assertOperationalEdge(warmed, "menu prefetch");
 
     const cacheState = await page.evaluate(async () => {
       const response = await fetch("/api/menu/v1/menu", { credentials: "include" });

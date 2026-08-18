@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 const backofficeOrigin = process.env.MANDYS_BACKOFFICE_ORIGIN ?? "https://mandyplataform.netlify.app";
 const roles = ["manager", "reception", "kitchen", "staff", "marketing", "accounting"];
 const fakeId = "00000000-0000-4000-8000-000000000001";
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const nav = {
   manager: { present: ["Reservations", "Orders", "Menu", "Stock", "Events", "Customers", "Insights", "Notifications", "Team", "Profile", "Operations", "Activity", "Plan"], absent: ["Data"] },
@@ -33,11 +34,27 @@ function identity(prefix) {
   };
 }
 
+async function retryRequest(label, operation, attempts = 4) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await operation();
+      if (response.status() < 500 || attempt === attempts) return response;
+      lastError = new Error(`${label} returned ${response.status()}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) throw error;
+    }
+    await sleep(300 * 2 ** (attempt - 1));
+  }
+  throw lastError ?? new Error(`${label} failed`);
+}
+
 async function postJson(context, path, data) {
-  return context.request.post(`${backofficeOrigin}${path}`, {
+  return retryRequest(`POST ${path}`, () => context.request.post(`${backofficeOrigin}${path}`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data,
-  });
+  }));
 }
 
 async function signup(context, user) {
@@ -74,7 +91,7 @@ async function invite(ownerContext, organizationId, user, role) {
   const body = await response.json().catch(() => null);
   let invitationId = body?.id ?? body?.data?.id ?? body?.invitation?.id;
   if (!invitationId) {
-    const list = await ownerContext.request.get(`${backofficeOrigin}/api/auth/organization/list-invitations?organizationId=${encodeURIComponent(organizationId)}`, { headers: { accept: "application/json" } });
+    const list = await retryRequest(`list invitations ${role}`, () => ownerContext.request.get(`${backofficeOrigin}/api/auth/organization/list-invitations?organizationId=${encodeURIComponent(organizationId)}`, { headers: { accept: "application/json" } }));
     expect(list.ok(), `list invitations: ${list.status()} ${await list.text()}`).toBeTruthy();
     const listed = await list.json();
     const invitations = Array.isArray(listed) ? listed : listed?.data ?? listed?.invitations ?? [];
@@ -84,12 +101,29 @@ async function invite(ownerContext, organizationId, user, role) {
   return invitationId;
 }
 
+async function ensureSession(context, user, organizationId) {
+  let session = await retryRequest(`session ${user.email}`, () => context.request.get(`${backofficeOrigin}/api/auth/get-session`, { headers: { accept: "application/json" } }));
+  let body = session.ok() ? await session.json().catch(() => null) : null;
+  if (body?.user?.email === user.email && body?.session?.activeOrganizationId === organizationId) return;
+
+  const signedIn = await postJson(context, "/api/auth/sign-in/email", { email: user.email, password: user.password });
+  expect(signedIn.ok(), `sign in ${user.email}: ${signedIn.status()} ${await signedIn.text()}`).toBeTruthy();
+  const active = await postJson(context, "/api/auth/organization/set-active", { organizationId });
+  expect(active.ok(), `restore active org ${user.email}: ${active.status()} ${await active.text()}`).toBeTruthy();
+
+  session = await retryRequest(`verify session ${user.email}`, () => context.request.get(`${backofficeOrigin}/api/auth/get-session`, { headers: { accept: "application/json" } }));
+  body = session.ok() ? await session.json().catch(() => null) : null;
+  expect(body?.user?.email, `session identity for ${user.email}`).toBe(user.email);
+  expect(body?.session?.activeOrganizationId, `active organization for ${user.email}`).toBe(organizationId);
+}
+
 async function acceptRole(context, user, invitationId, organizationId) {
   await signup(context, user);
   const accepted = await postJson(context, "/api/auth/organization/accept-invitation", { invitationId });
   expect(accepted.ok(), `accept invitation ${user.email}: ${accepted.status()} ${await accepted.text()}`).toBeTruthy();
   const active = await postJson(context, "/api/auth/organization/set-active", { organizationId });
   expect(active.ok(), `set active ${user.email}: ${active.status()} ${await active.text()}`).toBeTruthy();
+  await ensureSession(context, user, organizationId);
 }
 
 async function responseError(response) {
@@ -98,7 +132,7 @@ async function responseError(response) {
 }
 
 async function assertRead(context, path, allowed, label) {
-  const response = await context.request.get(`${backofficeOrigin}${path}`, { headers: { accept: "application/json" } });
+  const response = await retryRequest(label, () => context.request.get(`${backofficeOrigin}${path}`, { headers: { accept: "application/json" } }));
   const error = await responseError(response);
   if (allowed) {
     expect(error, `${label} should pass authorization; status=${response.status()}`).not.toBe("FORBIDDEN");
@@ -110,11 +144,11 @@ async function assertRead(context, path, allowed, label) {
 }
 
 async function assertAction(context, method, path, data, allowed, label) {
-  const response = await context.request.fetch(`${backofficeOrigin}${path}`, {
+  const response = await retryRequest(label, () => context.request.fetch(`${backofficeOrigin}${path}`, {
     method,
     headers: { accept: "application/json", "content-type": "application/json" },
     data,
-  });
+  }));
   const error = await responseError(response);
   if (allowed) {
     expect(error, `${label} should pass authorization; status=${response.status()}`).not.toBe("FORBIDDEN");
@@ -125,15 +159,32 @@ async function assertAction(context, method, path, data, allowed, label) {
   }
 }
 
+async function gotoRoleHome(page, role) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      if (response) expect(response.status(), `${role} home returned server error`).toBeLessThan(500);
+      await expect(page.getByRole("navigation", { name: "Mandy's" })).toBeVisible({ timeout: 25_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3) throw error;
+      await sleep(500 * attempt);
+    }
+  }
+  throw lastError ?? new Error(`${role} home did not render`);
+}
+
 async function deleteUser(context, password) {
   return postJson(context, "/api/auth/delete-user", { password });
 }
 
 async function cleanupOwner(context, password) {
-  const tenant = await context.request.delete(`${backofficeOrigin}/api/data-protection/v1/tenant`, {
+  const tenant = await retryRequest("tenant cleanup", () => context.request.delete(`${backofficeOrigin}/api/data-protection/v1/tenant`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: { confirmation: "DELETE" },
-  });
+  }));
   if (!tenant.ok() && tenant.status() !== 401) throw new Error(`tenant cleanup: ${tenant.status()} ${await tenant.text()}`);
   const user = await deleteUser(context, password);
   if (!user.ok() && user.status() !== 401) throw new Error(`owner cleanup: ${user.status()} ${await user.text()}`);
@@ -160,8 +211,7 @@ test("operational roles enforce navigation and API least privilege", async ({ br
       await acceptRole(context, user, invitationId, organizationId);
 
       const page = await context.newPage();
-      await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded", timeout: 25_000 });
-      await expect(page.getByRole("navigation", { name: "Mandy's" })).toBeVisible({ timeout: 20_000 });
+      await gotoRoleHome(page, role);
       await expect(page.getByText(new RegExp(`role:\\s*${role}`, "i"))).toBeVisible({ timeout: 15_000 });
       for (const label of nav[role].present) await expect(page.getByRole("link", { name: label, exact: true })).toBeVisible();
       for (const label of nav[role].absent) await expect(page.getByRole("link", { name: label, exact: true })).toHaveCount(0);
