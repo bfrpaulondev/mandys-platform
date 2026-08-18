@@ -131,10 +131,11 @@ test("Dashboard uses one bootstrap request and exposes end-to-end timing", async
     console.log(`PERF dashboard response proxy=${dashboardApi.headers()["x-mandys-proxy"] ?? "none"} timing=${timing}`);
     expect(dashboardApi.ok(), `dashboard API returned ${dashboardApi.status()}: ${await dashboardApi.text()}`).toBeTruthy();
     expect(dashboardApi.headers()["x-mandys-proxy"]).toBe("netlify-edge");
-    expectTimingHeader(dashboardApi, ["mandys_session", "mandys_db", "mandys_edge", "mandys_netlify_edge"]);
+    expectTimingHeader(dashboardApi, ["mandys_session", "mandys_rpc", "mandys_edge", "mandys_netlify_edge"]);
     expect(timing).not.toContain("mandys_gateway");
     expect(timing).not.toContain("mandys_auth");
     expect(timing).not.toContain("mandys_member");
+    expect(timing).not.toContain("mandys_db");
     const body = await dashboardApi.json();
     expect(body?.data?.configured).toBe(true);
     expect(body?.data?.profile?.publicName).toBe(identity.restaurantName);
