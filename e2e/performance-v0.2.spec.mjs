@@ -113,7 +113,11 @@ async function assertOperationalEdge(response, label, { allowModuleDisabled = fa
   const body = await response.json().catch(() => ({}));
   const expectedDisabled = allowModuleDisabled
     && response.status() === 403
-    && ["ORDERS_DISABLED", "MODULE_DISABLED"].includes(body?.error);
+    && (
+      body?.error === "MODULE_DISABLED"
+      || (label === "orders" && body?.error === "ORDERS_DISABLED")
+      || (label === "stock" && body?.error === "STOCK_DISABLED")
+    );
   expect(
     expectedDisabled,
     `${label} returned ${response.status()}: ${JSON.stringify(body)}`,
@@ -135,11 +139,11 @@ test("performance sprint 6-10 is active on production", async ({ page }) => {
       ["menu", "/api/menu/v1/menu", false],
       ["reservations", `/api/reservations/v1/reservations?from=${encodeURIComponent(now.toISOString())}&to=${encodeURIComponent(to.toISOString())}&limit=20`, false],
       ["crm", "/api/crm/v1/customers", false],
-      // Orders is intentionally an optional entitlement for a freshly onboarded tenant.
-      // The gateway is healthy if it reaches the runtime and preserves its fail-closed
-      // ORDERS_DISABLED response, or returns 200 for a tenant where the module is enabled.
+      // Orders and Stock are optional entitlements for a freshly onboarded tenant.
+      // Their gateways are healthy if they reach the runtime and preserve the exact
+      // fail-closed disabled response, or return 200 when the module is enabled.
       ["orders", "/api/orders/v1/orders?limit=20", true],
-      ["stock", "/api/stock/v1/stock", false],
+      ["stock", "/api/stock/v1/stock", true],
       ["notifications", "/api/notifications/v1/notifications?limit=20", false],
     ];
 
