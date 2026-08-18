@@ -51,23 +51,52 @@ export function NotificationsBoard({ locale }: { locale: Locale }) {
   useEffect(() => { void load(); }, [load]);
 
   async function markRead(id: string) {
-    setBusyId(id); setError(null);
+    const previousItems = items;
+    const previousUnread = unreadCount;
+    const target = items.find((item) => item.id === id);
+    if (!target || target.readAt || busyId === id) return;
+
+    const readAt = new Date().toISOString();
+    setBusyId(id);
+    setError(null);
+    setUnreadCount((current) => Math.max(0, current - 1));
+    setItems((current) => unreadOnly
+      ? current.filter((item) => item.id !== id)
+      : current.map((item) => item.id === id ? { ...item, readAt } : item));
+
     try {
       const response = await fetch(`/api/notifications/v1/notifications/${id}/read`, { method: "PATCH", credentials: "include" });
       if (!response.ok) throw new Error(await readError(response));
-      await load();
-    } catch (readFailure) { setError(readFailure instanceof Error ? readFailure.message : "Unexpected error"); }
-    finally { setBusyId(null); }
+    } catch (readFailure) {
+      setItems(previousItems);
+      setUnreadCount(previousUnread);
+      setError(readFailure instanceof Error ? readFailure.message : "Unexpected error");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function markAll() {
-    setBusyId("all"); setError(null);
+    if (unreadCount === 0 || busyId === "all") return;
+    const previousItems = items;
+    const previousUnread = unreadCount;
+    const readAt = new Date().toISOString();
+
+    setBusyId("all");
+    setError(null);
+    setUnreadCount(0);
+    setItems((current) => unreadOnly ? [] : current.map((item) => item.readAt ? item : { ...item, readAt }));
+
     try {
       const response = await fetch("/api/notifications/v1/notifications/read-all", { method: "POST", credentials: "include" });
       if (!response.ok) throw new Error(await readError(response));
-      await load();
-    } catch (readFailure) { setError(readFailure instanceof Error ? readFailure.message : "Unexpected error"); }
-    finally { setBusyId(null); }
+    } catch (readFailure) {
+      setItems(previousItems);
+      setUnreadCount(previousUnread);
+      setError(readFailure instanceof Error ? readFailure.message : "Unexpected error");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return <div className="space-y-6">
@@ -75,6 +104,6 @@ export function NotificationsBoard({ locale }: { locale: Locale }) {
     <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4"><div className="text-2xl font-semibold">{total}</div><div className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{c.total}</div></div><div className="rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4"><div className="text-2xl font-semibold">{unreadCount}</div><div className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{c.unreadCount}</div></div></div>
     <div className="flex gap-2"><button type="button" onClick={() => setUnreadOnly(false)} className={`rounded-lg px-3 py-2 text-sm font-medium ${!unreadOnly ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "bg-[var(--mandys-surface-muted)]"}`}>{c.all}</button><button type="button" onClick={() => setUnreadOnly(true)} className={`rounded-lg px-3 py-2 text-sm font-medium ${unreadOnly ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "bg-[var(--mandys-surface-muted)]"}`}>{c.unread}</button></div>
     {error ? <div className="rounded-md bg-[var(--mandys-surface-muted)] p-3 text-sm text-[var(--mandys-foreground-muted)]">{error}</div> : null}
-    {loading ? <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</div> : items.length === 0 ? <div className="rounded-[var(--mandys-radius-lg)] border border-dashed border-[var(--mandys-border)] p-8 text-center text-sm text-[var(--mandys-foreground-muted)]">{c.empty}</div> : <div className="space-y-3">{items.map((item) => <article key={item.id} className={`rounded-[var(--mandys-radius-lg)] border p-4 sm:p-5 ${item.readAt ? "border-[var(--mandys-border)] bg-[var(--mandys-surface)]" : "border-[var(--mandys-accent)] bg-[var(--mandys-surface)]"}`}><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{titleFor(item.eventKey, locale, item.title)}</h3><span className="rounded-full bg-[var(--mandys-surface-muted)] px-2 py-1 text-[11px] font-medium">{item.severity}</span></div>{item.body ? <p className="mt-2 text-sm leading-6 text-[var(--mandys-foreground-muted)]">{item.body}</p> : null}<p className="mt-2 text-xs text-[var(--mandys-foreground-muted)]">{dateFormatter.format(new Date(item.createdAt))}</p></div>{!item.readAt ? <Button variant="secondary" size="sm" disabled={busyId === item.id} onClick={() => void markRead(item.id)}>{c.read}</Button> : null}</div></article>)}</div>}
+    {loading ? <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</div> : items.length === 0 ? <div className="rounded-[var(--mandys-radius-lg)] border border-dashed border-[var(--mandys-border)] p-8 text-center text-sm text-[var(--mandys-foreground-muted)]">{c.empty}</div> : <div className="space-y-3">{items.map((item) => <article key={item.id} aria-busy={busyId === item.id || busyId === "all"} className={`rounded-[var(--mandys-radius-lg)] border p-4 sm:p-5 ${item.readAt ? "border-[var(--mandys-border)] bg-[var(--mandys-surface)]" : "border-[var(--mandys-accent)] bg-[var(--mandys-surface)]"}`}><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{titleFor(item.eventKey, locale, item.title)}</h3><span className="rounded-full bg-[var(--mandys-surface-muted)] px-2 py-1 text-[11px] font-medium">{item.severity}</span></div>{item.body ? <p className="mt-2 text-sm leading-6 text-[var(--mandys-foreground-muted)]">{item.body}</p> : null}<p className="mt-2 text-xs text-[var(--mandys-foreground-muted)]">{dateFormatter.format(new Date(item.createdAt))}</p></div>{!item.readAt ? <Button variant="secondary" size="sm" disabled={busyId === item.id || busyId === "all"} onClick={() => void markRead(item.id)}>{c.read}</Button> : null}</div></article>)}</div>}
   </div>;
 }
