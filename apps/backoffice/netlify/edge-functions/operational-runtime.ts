@@ -40,6 +40,7 @@ export function operationalTargetFor(request: Request): { target: URL; service: 
   if (segments.length < 3 || segments[0] !== "api") return null;
 
   const serviceKey = segments[1];
+  if (!serviceKey) return null;
   const service = services.get(serviceKey);
   if (!service) return null;
 
