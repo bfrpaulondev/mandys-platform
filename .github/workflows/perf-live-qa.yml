@@ -1,0 +1,64 @@
+name: Performance live QA
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-live-qa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  live-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Wait for current main to reach Netlify
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            echo "Live readiness attempt ${attempt}/12"
+            if node scripts/verify-v0.1-deployments.mjs; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "Netlify targets did not reach readiness." >&2
+              exit 1
+            fi
+            sleep 30
+          done
+      - name: Verify Edge runtime health
+        run: node scripts/verify-edge-runtime-health.mjs
+      - name: Prepare Playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p playwright-runtime
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/authenticated-v0.1.spec.mjs e2e/billing-fail-closed.spec.mjs e2e/roles-v0.1.spec.mjs e2e/performance-v0.1.spec.mjs playwright-runtime/
+          cd playwright-runtime
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.62.1
+          npx playwright install --with-deps chromium
+      - name: Run full live and performance browser QA
+        working-directory: playwright-runtime
+        run: npx playwright test live-v0.1.spec.mjs authenticated-v0.1.spec.mjs billing-fail-closed.spec.mjs roles-v0.1.spec.mjs performance-v0.1.spec.mjs --config=playwright.config.mjs
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-live-qa-${{ github.run_id }}
+          path: |
+            playwright-runtime/playwright-report
+            playwright-runtime/test-results
+          if-no-files-found: ignore
+          retention-days: 7
