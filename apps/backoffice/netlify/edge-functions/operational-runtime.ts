@@ -34,7 +34,7 @@ function json(body: unknown, status: number, startedAt: number): Response {
   });
 }
 
-function targetFor(request: Request): { target: URL; service: string } | null {
+export function operationalTargetFor(request: Request): { target: URL; service: string } | null {
   const incoming = new URL(request.url);
   const segments = incoming.pathname.split("/").filter(Boolean);
   if (segments.length < 3 || segments[0] !== "api") return null;
@@ -64,7 +64,7 @@ function forwardedHeaders(request: Request, traceId: string): Headers {
 
 export default async function handler(request: Request): Promise<Response> {
   const startedAt = performance.now();
-  const route = targetFor(request);
+  const route = operationalTargetFor(request);
   if (!route) return json({ error: "NOT_FOUND", message: "Route not found" }, 404, startedAt);
 
   const traceId = crypto.randomUUID();
