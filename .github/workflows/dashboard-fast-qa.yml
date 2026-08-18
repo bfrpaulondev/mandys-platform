@@ -1,0 +1,88 @@
+name: Dashboard fast live QA
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe authenticated production dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="https://mandyplataform.netlify.app"
+          work="$(mktemp -d)"
+          jar="$work/cookies.txt"
+          token="$(date +%s)-$RANDOM-$RANDOM"
+          email="mandys-fast-perf-${token}@example.com"
+          password="Mandy-Fast-Perf-${token}!Aa9"
+          restaurant="Mandy Fast PERF ${token}"
+          slug="mandy-fast-perf-${token}"
+
+          api() {
+            curl --silent --show-error --retry 4 --retry-all-errors --retry-delay 1 \
+              --connect-timeout 10 --max-time 30 -c "$jar" -b "$jar" "$@"
+          }
+
+          cleanup() {
+            set +e
+            api -X DELETE "$origin/api/data-protection/v1/tenant" \
+              -H 'accept: application/json' -H 'content-type: application/json' \
+              --data '{"confirmation":"DELETE"}' >/dev/null
+            api -X POST "$origin/api/auth/delete-user" \
+              -H 'accept: application/json' -H 'content-type: application/json' \
+              --data "$(node -e 'process.stdout.write(JSON.stringify({password:process.argv[1]}))' "$password")" >/dev/null
+          }
+          trap cleanup EXIT
+
+          signup_code="$(api -o "$work/signup.json" -w '%{http_code}' -X POST "$origin/api/auth/sign-up/email" \
+            -H 'accept: application/json' -H 'content-type: application/json' \
+            --data "$(node -e 'process.stdout.write(JSON.stringify({name:"Mandy Fast Performance",email:process.argv[1],password:process.argv[2]}))' "$email" "$password")")"
+          test "$signup_code" -ge 200 -a "$signup_code" -lt 300
+
+          org_code="$(api -o "$work/org.json" -w '%{http_code}' -X POST "$origin/api/auth/organization/create" \
+            -H 'accept: application/json' -H 'content-type: application/json' \
+            --data "$(node -e 'process.stdout.write(JSON.stringify({name:process.argv[1],slug:process.argv[2]}))' "$restaurant" "mandys-$slug")")"
+          test "$org_code" -ge 200 -a "$org_code" -lt 300
+          org_id="$(node -e 'const b=require(process.argv[1]); const id=b.id||b.data?.id||b.organization?.id; if(!id) process.exit(2); process.stdout.write(id)' "$work/org.json")"
+
+          active_code="$(api -o "$work/active.json" -w '%{http_code}' -X POST "$origin/api/auth/organization/set-active" \
+            -H 'accept: application/json' -H 'content-type: application/json' \
+            --data "$(node -e 'process.stdout.write(JSON.stringify({organizationId:process.argv[1]}))' "$org_id")")"
+          test "$active_code" -ge 200 -a "$active_code" -lt 300
+
+          onboarding_code="$(api -o "$work/onboarding.json" -w '%{http_code}' -X POST "$origin/api/runtime/v1/onboarding/restaurant" \
+            -H 'accept: application/json' -H 'content-type: application/json' \
+            --data "$(node -e 'process.stdout.write(JSON.stringify({publicName:process.argv[1],locationName:"Principal",slug:process.argv[2],countryCode:"PT",timezone:"Europe/Lisbon",currency:"EUR",defaultLocale:"en",enabledLocales:["en","pt-PT"]}))' "$restaurant" "$slug")")"
+          test "$onboarding_code" -ge 200 -a "$onboarding_code" -lt 300
+
+          started="$(date +%s%3N)"
+          dashboard_code="$(api -D "$work/dashboard.headers" -o "$work/dashboard.json" -w '%{http_code}' \
+            "$origin/api/dashboard" -H 'accept: application/json')"
+          finished="$(date +%s%3N)"
+          elapsed="$((finished-started))"
+
+          echo "Dashboard HTTP $dashboard_code in ${elapsed}ms"
+          grep -i '^x-mandys-proxy: netlify-edge' "$work/dashboard.headers"
+          timing="$(grep -i '^server-timing:' "$work/dashboard.headers" | tr -d '\r')"
+          echo "$timing"
+          echo "$timing" | grep -q 'mandys_session'
+          echo "$timing" | grep -q 'mandys_db'
+          echo "$timing" | grep -q 'mandys_edge'
+          echo "$timing" | grep -q 'mandys_netlify_edge'
+          if echo "$timing" | grep -q 'mandys_auth\|mandys_member\|mandys_gateway'; then
+            echo "Legacy dashboard waterfall marker detected" >&2
+            exit 1
+          fi
+          test "$dashboard_code" -eq 200
+          node -e 'const b=require(process.argv[1]); if(b?.data?.profile?.publicName!==process.argv[2]) process.exit(2)' "$work/dashboard.json" "$restaurant"
+          if [ "$elapsed" -ge 3000 ]; then
+            echo "Dashboard exceeded 3000ms budget: ${elapsed}ms" >&2
+            exit 1
+          fi
