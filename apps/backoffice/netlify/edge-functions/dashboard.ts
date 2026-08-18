@@ -1,6 +1,8 @@
 const DASHBOARD_UPSTREAM =
   "https://dbfmjdissqsdhxhmqkqp.supabase.co/functions/v1/mandys-dashboard/v1/dashboard";
 
+export const config = { path: "/api/dashboard" };
+
 export default async function handler(request: Request): Promise<Response> {
   const startedAt = performance.now();
   if (request.method !== "GET") {
