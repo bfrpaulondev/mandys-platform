@@ -1,35 +1,26 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import postgres from "npm:postgres@3.4.7";
 
-const connectionString = Deno.env.get("SUPABASE_DB_URL");
-if (!connectionString) throw new Error("SUPABASE_DB_URL is required");
+const projectUrl = Deno.env.get("SUPABASE_URL") ?? "https://dbfmjdissqsdhxhmqkqp.supabase.co";
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+if (!serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required");
 
-const sql = postgres(connectionString, {
-  prepare: false,
-  max: 4,
-  idle_timeout: 30,
-  connect_timeout: 8,
-  connection: {
-    application_name: "mandys-dashboard-edge",
-    search_path: "mandys,public",
-  },
-});
+const dashboardRpcUrl = `${projectUrl}/rest/v1/rpc/mandys_dashboard_snapshot`;
 
 type Timing = {
   sessionMs?: number;
-  dbMs?: number;
+  rpcMs?: number;
   totalMs?: number;
 };
 
-type DashboardRow = {
-  authenticated: boolean;
-  organization_id: string | null;
-  role: string | null;
-  configured: boolean;
-  profile: { publicName?: string } | null;
-  active_location: { id?: string; name?: string; isActive?: boolean } | null;
-  modules: Array<{ moduleKey: string; status: string }> | null;
-  today: {
+type DashboardSnapshot = {
+  authenticated?: boolean;
+  organizationId?: string | null;
+  role?: string | null;
+  configured?: boolean;
+  profile?: { publicName?: string } | null;
+  activeLocation?: { id?: string; name?: string; isActive?: boolean } | null;
+  modules?: Array<{ moduleKey: string; status: string }>;
+  today?: {
     reservationCount?: number;
     guestCount?: number;
     nextReservation?: {
@@ -39,13 +30,13 @@ type DashboardRow = {
       partySize: number;
       status: string;
     } | null;
-  } | null;
+  };
 };
 
 function serverTiming(timing: Timing): string {
   const parts: string[] = [];
   if (timing.sessionMs !== undefined) parts.push(`mandys_session;dur=${timing.sessionMs.toFixed(1)}`);
-  if (timing.dbMs !== undefined) parts.push(`mandys_db;dur=${timing.dbMs.toFixed(1)}`);
+  if (timing.rpcMs !== undefined) parts.push(`mandys_rpc;dur=${timing.rpcMs.toFixed(1)}`);
   if (timing.totalMs !== undefined) parts.push(`mandys_edge;dur=${timing.totalMs.toFixed(1)}`);
   return parts.join(", ");
 }
@@ -104,116 +95,24 @@ function sessionToken(request: Request): string | null {
   return null;
 }
 
-async function readDashboard(token: string): Promise<DashboardRow> {
-  const rows = await sql<DashboardRow[]>`
-    with session_ctx as materialized (
-      select
-        s.user_id,
-        s.active_organization_id as organization_id
-      from mandys.session s
-      where s.token = ${token}
-        and s.expires_at > now()
-      order by s.updated_at desc
-      limit 1
-    ),
-    member_ctx as materialized (
-      select m.role
-      from session_ctx s
-      join mandys.member m
-        on m.organization_id = s.organization_id
-       and m.user_id = s.user_id
-      limit 1
-    ),
-    active_location as materialized (
-      select l.id, l.name, l.is_active
-      from mandys.locations l
-      where l.organization_id = (select organization_id from session_ctx)
-      order by l.is_active desc, l.created_at asc
-      limit 1
-    ),
-    tenant_timezone as materialized (
-      select coalesce(ts.timezone, 'Europe/Lisbon') as timezone
-      from session_ctx s
-      left join mandys.tenant_settings ts
-        on ts.organization_id = s.organization_id
-      limit 1
-    ),
-    profile as materialized (
-      select rp.public_name
-      from mandys.restaurant_profiles rp
-      where rp.organization_id = (select organization_id from session_ctx)
-        and (
-          rp.location_id = (select id from active_location)
-          or rp.location_id is null
-        )
-      order by rp.location_id nulls last, rp.created_at asc
-      limit 1
-    ),
-    today_reservations as materialized (
-      select r.id, r.guest_name, r.starts_at, r.party_size, r.status
-      from mandys.reservations r
-      where r.organization_id = (select organization_id from session_ctx)
-        and r.location_id = (select id from active_location)
-        and (r.starts_at at time zone (select timezone from tenant_timezone))::date =
-            (now() at time zone (select timezone from tenant_timezone))::date
-        and r.status not in ('cancelled', 'no_show')
-    )
-    select
-      exists(select 1 from session_ctx) as authenticated,
-      (select organization_id from session_ctx) as organization_id,
-      (select role from member_ctx) as role,
-      (exists(select 1 from active_location) and exists(select 1 from profile)) as configured,
-      coalesce(
-        (select jsonb_build_object('publicName', public_name) from profile),
-        'null'::jsonb
-      ) as profile,
-      coalesce(
-        (
-          select jsonb_build_object('id', id, 'name', name, 'isActive', is_active)
-          from active_location
-        ),
-        'null'::jsonb
-      ) as active_location,
-      coalesce(
-        (
-          select jsonb_agg(
-            jsonb_build_object('moduleKey', me.module_key, 'status', me.status)
-            order by me.module_key
-          )
-          from mandys.module_entitlements me
-          where me.organization_id = (select organization_id from session_ctx)
-        ),
-        '[]'::jsonb
-      ) as modules,
-      jsonb_build_object(
-        'reservationCount', (select count(*)::int from today_reservations),
-        'guestCount', (select coalesce(sum(party_size), 0)::int from today_reservations),
-        'nextReservation', (
-          select jsonb_build_object(
-            'id', id,
-            'guestName', guest_name,
-            'startsAt', starts_at,
-            'partySize', party_size,
-            'status', status
-          )
-          from today_reservations
-          where starts_at >= now()
-          order by starts_at asc
-          limit 1
-        )
-      ) as today
-  `;
+async function readDashboard(token: string): Promise<DashboardSnapshot> {
+  const response = await fetch(dashboardRpcUrl, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ p_session_token: token }),
+    cache: "no-store",
+  });
 
-  return rows[0] ?? {
-    authenticated: false,
-    organization_id: null,
-    role: null,
-    configured: false,
-    profile: null,
-    active_location: null,
-    modules: [],
-    today: { reservationCount: 0, guestCount: 0, nextReservation: null },
-  };
+  const body = await response.json().catch(() => null) as DashboardSnapshot | null;
+  if (!response.ok || !body || typeof body !== "object") {
+    throw new Error(`dashboard snapshot RPC failed (${response.status})`);
+  }
+  return body;
 }
 
 Deno.serve(async (request) => {
@@ -250,46 +149,46 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const dbStartedAt = performance.now();
-    const row = await readDashboard(token);
-    const dbMs = performance.now() - dbStartedAt;
+    const rpcStartedAt = performance.now();
+    const snapshot = await readDashboard(token);
+    const rpcMs = performance.now() - rpcStartedAt;
 
-    if (!row.authenticated) {
+    if (!snapshot.authenticated) {
       return json(
         { error: "UNAUTHENTICATED", message: "Session is invalid or expired" },
         401,
-        { sessionMs, dbMs, totalMs: performance.now() - totalStartedAt },
+        { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
       );
     }
-    if (!row.organization_id) {
+    if (!snapshot.organizationId) {
       return json(
         { error: "TENANT_CONTEXT_REQUIRED", message: "Select an active restaurant organization" },
         401,
-        { sessionMs, dbMs, totalMs: performance.now() - totalStartedAt },
+        { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
       );
     }
-    if (!row.role) {
+    if (!snapshot.role) {
       return json(
         { error: "FORBIDDEN", message: "Organization membership is required" },
         403,
-        { sessionMs, dbMs, totalMs: performance.now() - totalStartedAt },
+        { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
       );
     }
 
     return json(
       {
         data: {
-          configured: Boolean(row.configured),
-          currentRole: row.role,
-          profile: row.profile ?? null,
-          activeLocation: row.active_location ?? null,
-          modules: Array.isArray(row.modules) ? row.modules : [],
-          today: row.today ?? { reservationCount: 0, guestCount: 0, nextReservation: null },
+          configured: Boolean(snapshot.configured),
+          currentRole: snapshot.role,
+          profile: snapshot.profile ?? null,
+          activeLocation: snapshot.activeLocation ?? null,
+          modules: Array.isArray(snapshot.modules) ? snapshot.modules : [],
+          today: snapshot.today ?? { reservationCount: 0, guestCount: 0, nextReservation: null },
           generatedAt: new Date().toISOString(),
         },
       },
       200,
-      { sessionMs, dbMs, totalMs: performance.now() - totalStartedAt },
+      { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
     );
   } catch (error) {
     console.error("mandys-dashboard error", error instanceof Error ? error.message : String(error));
