@@ -30,14 +30,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p playwright-runtime
-          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs playwright-runtime/
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/origin-stability.spec.mjs playwright-runtime/
           cd playwright-runtime
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.62.1
           npx playwright install --with-deps chromium
-      - name: Verify live responsive browser surfaces
+      - name: Verify live responsive browser surfaces and Netlify origin stability
         working-directory: playwright-runtime
-        run: npx playwright test live-v0.1.spec.mjs --config=playwright.config.mjs
+        run: npx playwright test live-v0.1.spec.mjs origin-stability.spec.mjs --config=playwright.config.mjs
       - name: Upload browser test artifacts
         if: failure()
         uses: actions/upload-artifact@v7
