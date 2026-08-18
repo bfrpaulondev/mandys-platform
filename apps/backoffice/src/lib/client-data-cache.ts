@@ -13,11 +13,6 @@ type StoredResponse = {
   expiresAt: number;
 };
 
-type NetworkSnapshot = {
-  response: StoredResponse;
-  cacheable: boolean;
-};
-
 const MAX_ENTRIES = 64;
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
@@ -60,7 +55,8 @@ async function snapshotResponse(response: Response, ttlMs: number): Promise<Stor
 
 function requestDetails(input: RequestInfo | URL, init?: RequestInit): { request: Request; url: URL } | null {
   try {
-    const request = new Request(input, init);
+    const normalizedInput = typeof input === "string" ? new URL(input, window.location.origin) : input;
+    const request = new Request(normalizedInput, init);
     const url = new URL(request.url, window.location.origin);
     return { request, url };
   } catch {
@@ -71,12 +67,12 @@ function requestDetails(input: RequestInfo | URL, init?: RequestInit): { request
 export function installBackofficeDataCache(): () => void {
   if (typeof window === "undefined") return () => undefined;
 
-  const existing = (window as typeof window & { __mandysDataCacheCleanup?: () => void }).__mandysDataCacheCleanup;
-  if (existing) return () => undefined;
+  const extendedWindow = window as typeof window & { __mandysDataCacheCleanup?: () => void };
+  if (extendedWindow.__mandysDataCacheCleanup) return () => undefined;
 
   const nativeFetch = window.fetch.bind(window);
   const cache = new Map<string, { namespace: string; response: StoredResponse }>();
-  const inFlight = new Map<string, Promise<NetworkSnapshot | null>>();
+  const inFlight = new Map<string, Promise<StoredResponse | null>>();
 
   function clearAll(): void {
     cache.clear();
@@ -139,31 +135,28 @@ export function installBackofficeDataCache(): () => void {
 
     const pending = inFlight.get(key);
     if (pending) {
-      const result = await pending;
-      if (result) return responseFromStored(result.response, "deduped");
-      return nativeFetch(input, init);
+      const stored = await pending;
+      return stored ? responseFromStored(stored, "deduped") : nativeFetch(input, init);
     }
 
-    const network = (async (): Promise<NetworkSnapshot | null> => {
+    const network = (async (): Promise<StoredResponse | null> => {
       const response = await nativeFetch(input, init);
       if (response.status === 401 || response.status === 403) clearAll();
       const contentType = response.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) return null;
       const stored = await snapshotResponse(response, policy.ttlMs);
       if (!stored) return null;
-      const cacheable = response.ok;
-      if (cacheable) {
+      if (response.ok) {
         cache.set(key, { namespace: policy.namespace, response: stored });
         trim();
       }
-      return { response: stored, cacheable };
+      return stored;
     })();
 
     inFlight.set(key, network);
     try {
-      const result = await network;
-      if (!result) return nativeFetch(input, init);
-      return responseFromStored(result.response, "miss");
+      const stored = await network;
+      return stored ? responseFromStored(stored, "miss") : nativeFetch(input, init);
     } finally {
       inFlight.delete(key);
     }
@@ -174,9 +167,9 @@ export function installBackofficeDataCache(): () => void {
   const cleanup = () => {
     clearAll();
     if (window.fetch === cachedFetch) window.fetch = nativeFetch;
-    delete (window as typeof window & { __mandysDataCacheCleanup?: () => void }).__mandysDataCacheCleanup;
+    delete extendedWindow.__mandysDataCacheCleanup;
   };
 
-  (window as typeof window & { __mandysDataCacheCleanup?: () => void }).__mandysDataCacheCleanup = cleanup;
+  extendedWindow.__mandysDataCacheCleanup = cleanup;
   return cleanup;
 }
