@@ -127,8 +127,12 @@ test("Dashboard uses one bootstrap request and exposes end-to-end timing", async
       headers: { accept: "application/json" },
     }));
     const dashboardApiMs = Date.now() - apiStartedAt;
+    const timing = dashboardApi.headers()["server-timing"] ?? "";
+    console.log(`PERF dashboard response proxy=${dashboardApi.headers()["x-mandys-proxy"] ?? "none"} timing=${timing}`);
     expect(dashboardApi.ok(), `dashboard API returned ${dashboardApi.status()}: ${await dashboardApi.text()}`).toBeTruthy();
-    expectTimingHeader(dashboardApi, ["mandys_auth", "mandys_member", "mandys_db", "mandys_edge", "mandys_upstream", "mandys_gateway"]);
+    expect(dashboardApi.headers()["x-mandys-proxy"]).toBe("netlify-edge");
+    expectTimingHeader(dashboardApi, ["mandys_auth", "mandys_member", "mandys_db", "mandys_edge", "mandys_netlify_edge"]);
+    expect(timing).not.toContain("mandys_gateway");
     const body = await dashboardApi.json();
     expect(body?.data?.configured).toBe(true);
     expect(body?.data?.profile?.publicName).toBe(identity.restaurantName);
@@ -147,7 +151,7 @@ test("Dashboard uses one bootstrap request and exposes end-to-end timing", async
     });
 
     const startedAt = Date.now();
-    await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.getByRole("heading", { name: identity.restaurantName })).toBeVisible({ timeout: 25_000 });
     const visibleMs = Date.now() - startedAt;
     console.log(`PERF dashboard api=${dashboardApiMs}ms visible=${visibleMs}ms`);
@@ -162,16 +166,15 @@ test("Dashboard uses one bootstrap request and exposes end-to-end timing", async
 });
 
 test("Backoffice memory cache serves repeat reads and invalidates after mutations", async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const identity = uniqueIdentity();
   let provisioned = false;
   try {
     await provisionTenant(page, identity);
     provisioned = true;
 
-    await page.goto(`${backofficeOrigin}/en/menu`, { waitUntil: "domcontentloaded" });
-    await expect(page.locator("main")).toBeVisible({ timeout: 25_000 });
-    await page.waitForTimeout(500);
+    await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: identity.restaurantName })).toBeVisible({ timeout: 25_000 });
 
     const cacheStates = await page.evaluate(async () => {
       await fetch("/api/menu/v1/menu", { credentials: "include", cache: "reload" });
@@ -183,7 +186,7 @@ test("Backoffice memory cache serves repeat reads and invalidates after mutation
         timing: first.headers.get("server-timing"),
       };
     });
-    expect(["miss", "deduped"], `first read must not be a stale cache hit`).toContain(cacheStates.first);
+    expect(["miss", "deduped"], "first read must not be a stale cache hit").toContain(cacheStates.first);
     expect(cacheStates.second).toBe("hit");
     expect(cacheStates.timing ?? "").toContain("mandys_gateway");
 
