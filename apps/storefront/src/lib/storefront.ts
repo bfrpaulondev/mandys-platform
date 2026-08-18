@@ -1,11 +1,14 @@
 import type { Locale } from "@mandys/i18n";
 import { headers } from "next/headers";
+import { cache } from "react";
 
 import {
   getPublicApiUrl,
   normalizeStorefrontHost,
   resolveStorefrontHostname,
 } from "./public-api";
+
+export const STOREFRONT_REVALIDATE_SECONDS = 30;
 
 export type StorefrontMenuItem = {
   id: string;
@@ -74,7 +77,23 @@ export type StorefrontData = {
 
 type StorefrontResponse = { data: Omit<StorefrontData, "isDemo"> };
 
-const demoCopy = {
+type DemoCopy = {
+  description: string;
+  menuName: string;
+  starters: string;
+  mains: string;
+  desserts: string;
+  oyster: string;
+  oysterDescription: string;
+  cuttlefish: string;
+  cuttlefishDescription: string;
+  seabass: string;
+  seabassDescription: string;
+  tart: string;
+  tartDescription: string;
+};
+
+const demoCopy: Record<Locale, DemoCopy> = {
   "pt-PT": {
     description: "Peixe, marisco e cozinha de inspiração atlântica. Conceito fictício criado para demonstrar o Mandy's.",
     menuName: "Menu principal",
@@ -135,7 +154,7 @@ const demoCopy = {
     tart: "Tarta de limón",
     tartDescription: "Merengue ligero y cítricos.",
   },
-} as const satisfies Record<Locale, Record<string, string>>;
+};
 
 function demoStorefront(locale: Locale): StorefrontData {
   const c = demoCopy[locale];
@@ -245,25 +264,30 @@ function demoStorefront(locale: Locale): StorefrontData {
   };
 }
 
+const loadStorefrontForTenant = cache(async (hostname: string, locale: Locale): Promise<StorefrontData> => {
+  const params = new URLSearchParams({ hostname, locale });
+  const response = await fetch(`${getPublicApiUrl()}/v1/public/storefront?${params.toString()}`, {
+    headers: { accept: "application/json" },
+    next: {
+      revalidate: STOREFRONT_REVALIDATE_SECONDS,
+      tags: [`storefront:${hostname}`, `storefront:${hostname}:${locale}`],
+    },
+  });
+
+  if (!response.ok) return demoStorefront(locale);
+  const body = (await response.json()) as StorefrontResponse;
+  return { ...body.data, isDemo: false };
+});
+
 export async function getStorefrontData(locale: Locale): Promise<StorefrontData> {
-  const apiUrl = getPublicApiUrl();
   const requestHeaders = await headers();
   const forwardedHost = normalizeStorefrontHost(requestHeaders.get("x-forwarded-host"));
   const host = forwardedHost ?? normalizeStorefrontHost(requestHeaders.get("host"));
   const hostname = resolveStorefrontHostname(host);
-
   if (!hostname) return demoStorefront(locale);
 
   try {
-    const params = new URLSearchParams({ hostname, locale });
-    const response = await fetch(`${apiUrl}/v1/public/storefront?${params.toString()}`, {
-      cache: "no-store",
-      headers: { accept: "application/json" },
-    });
-
-    if (!response.ok) return demoStorefront(locale);
-    const body = (await response.json()) as StorefrontResponse;
-    return { ...body.data, isDemo: false };
+    return await loadStorefrontForTenant(hostname, locale);
   } catch {
     return demoStorefront(locale);
   }
