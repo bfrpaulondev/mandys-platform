@@ -9,6 +9,7 @@ describe("backoffice client data cache policy", () => {
     expect(cachePolicyForPath("/api/crm/v1/customers")?.namespace).toBe("crm");
     expect(cachePolicyForPath("/api/reservations/v1/reservations")?.namespace).toBe("reservations");
     expect(cachePolicyForPath("/api/orders/v1/orders")?.namespace).toBe("orders");
+    expect(cachePolicyForPath("/api/notifications/v1/notifications")?.namespace).toBe("notifications");
     expect(cachePolicyForPath("/api/stock/v1/stock")?.namespace).toBe("stock");
   });
 
@@ -20,6 +21,7 @@ describe("backoffice client data cache policy", () => {
   it("keeps fast-changing operational data on short TTLs", () => {
     expect(cachePolicyForPath("/api/reservations/v1/reservations")?.ttlMs).toBeLessThanOrEqual(5_000);
     expect(cachePolicyForPath("/api/orders/v1/orders")?.ttlMs).toBeLessThanOrEqual(5_000);
+    expect(cachePolicyForPath("/api/notifications/v1/notifications")?.ttlMs).toBeLessThanOrEqual(5_000);
     expect(cachePolicyForPath("/api/menu/v1/menu")?.ttlMs).toBeGreaterThan(5_000);
   });
 });
