@@ -1,1 +1,1 @@
-Retry live performance runner after an unusually long Playwright dependency install on run 32153502325.
+Final post-merge verification for performance blocks 1-5 after main commit 36267b15b3ae23fe0537b6996c26d80889780595.
