@@ -63,6 +63,22 @@ test("Backoffice protected runtime gateway rejects missing tenant context on the
   expect(["UNAUTHORIZED", "TENANT_CONTEXT_REQUIRED"]).toContain(body?.error);
 });
 
+test("Backoffice dashboard gateway is served by the Netlify edge proxy and rejects unauthenticated access", async ({ request }) => {
+  const response = await request.get(`${backofficeOrigin}/api/dashboard`, {
+    headers: { accept: "application/json" },
+    maxRedirects: 10,
+  });
+
+  expect(response.status()).toBe(401);
+  expect(response.headers()["content-type"] ?? "").toContain("application/json");
+  expect(response.headers()["x-mandys-proxy"]).toBe("netlify-edge");
+  expect(response.headers()["cache-control"] ?? "").toContain("no-store");
+  expectSameOrigin(response.url(), backofficeOrigin);
+
+  const body = await response.json();
+  expect(body?.error).toBe("UNAUTHENTICATED");
+});
+
 test("Storefront browser entry stays on the configured Netlify origin", async ({ page }) => {
   const response = await page.goto(`${storefrontOrigin}/pt-PT`, {
     waitUntil: "domcontentloaded",
