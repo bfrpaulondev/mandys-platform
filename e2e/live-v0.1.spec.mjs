@@ -5,6 +5,8 @@ const backofficeOrigin =
 const storefrontOrigin =
   process.env.MANDYS_STOREFRONT_ORIGIN ?? "https://mandy-store-front.netlify.app";
 const liveMarker = process.env.MANDYS_STOREFRONT_LIVE_MARKER ?? "Maré · Setúbal";
+const reservationProbeTimezone =
+  process.env.MANDYS_RESERVATION_PROBE_TIMEZONE ?? "Europe/Lisbon";
 
 const locales = [
   ["pt-PT", "Português (Portugal)", "Reserve diretamente", "Reservar mesa"],
@@ -19,8 +21,24 @@ const responsiveViewports = [
   ["desktop", { width: 1440, height: 900 }],
 ];
 
-function futureDateValue(offsetDays = 2) {
-  const date = new Date();
+function datePartsInTimezone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+  };
+}
+
+function futureDateValue(offsetDays = 2, timeZone = reservationProbeTimezone) {
+  const { year, month, day } = datePartsInTimezone(new Date(), timeZone);
+  const date = new Date(Date.UTC(year, month - 1, day));
   date.setUTCDate(date.getUTCDate() + offsetDays);
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
