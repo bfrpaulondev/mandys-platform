@@ -12,9 +12,36 @@ const reservationCtas = [
   ["en", "Book a table"],
   ["es", "Reservar mesa"],
 ];
+const responsiveViewports = [
+  ["mobile", { width: 390, height: 844 }],
+  ["tablet", { width: 768, height: 1024 }],
+  ["desktop", { width: 1440, height: 900 }],
+];
 
 function expectSameOrigin(actualUrl, expectedOrigin) {
   expect(new URL(actualUrl).origin).toBe(new URL(expectedOrigin).origin);
+}
+
+async function expectNoHorizontalOverflow(page) {
+  await expect
+    .poll(async () =>
+      page.evaluate(() => ({
+        viewportWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+      })),
+    )
+    .toEqual(
+      expect.objectContaining({
+        viewportWidth: expect.any(Number),
+        documentWidth: expect.any(Number),
+      }),
+    );
+
+  const dimensions = await page.evaluate(() => ({
+    viewportWidth: document.documentElement.clientWidth,
+    documentWidth: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth + 1);
 }
 
 for (const locale of locales) {
@@ -87,6 +114,36 @@ test("Storefront browser entry stays on the configured Netlify origin", async ({
   expect(response?.ok()).toBeTruthy();
   expectSameOrigin(page.url(), storefrontOrigin);
 });
+
+for (const [viewportName, viewport] of responsiveViewports) {
+  test(`Backoffice login is usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const response = await page.goto(`${backofficeOrigin}/en/login`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(response?.ok()).toBeTruthy();
+    expectSameOrigin(page.url(), backofficeOrigin);
+    await expect(page.locator("input").first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test(`Storefront menu and reservation flow stay usable without horizontal overflow on ${viewportName}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const response = await page.goto(`${storefrontOrigin}/pt-PT#menu`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(response?.ok()).toBeTruthy();
+    expectSameOrigin(page.url(), storefrontOrigin);
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
+    await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
+    expect(new URL(page.url()).hash).toBe("#reserve");
+    await expectNoHorizontalOverflow(page);
+  });
+}
 
 for (const [locale, bookingCta] of reservationCtas) {
   test(`Storefront ${locale} menu to reservation CTA stays on origin and reaches the live form`, async ({ page }) => {
