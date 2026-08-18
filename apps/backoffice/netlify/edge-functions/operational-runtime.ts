@@ -43,7 +43,13 @@ export function operationalTargetFor(request: Request): { target: URL; service: 
   const service = services[serviceKey];
   if (!service) return null;
 
-  const remaining = segments.slice(2).map(encodeURIComponent).join("/");
+  // Preserve the browser's serialized path instead of decoding/re-encoding it.
+  // IDs are usually UUIDs, but this also avoids double-encoding valid %xx paths.
+  const prefix = `/api/${serviceKey}/`;
+  if (!incoming.pathname.startsWith(prefix)) return null;
+  const remaining = incoming.pathname.slice(prefix.length);
+  if (!remaining) return null;
+
   const target = new URL(`${SUPABASE_FUNCTIONS_ORIGIN}/${service}/${remaining}`);
   target.search = incoming.search;
   return { target, service };
