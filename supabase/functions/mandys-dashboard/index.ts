@@ -1,39 +1,42 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import postgres from "npm:postgres@3.4.7";
 
-const projectUrl = "https://dbfmjdissqsdhxhmqkqp.supabase.co";
-const authSessionUrl = `${projectUrl}/functions/v1/mandys-auth/api/auth/get-session`;
-const connectionString = Deno.env.get("SUPABASE_DB_URL");
-if (!connectionString) throw new Error("SUPABASE_DB_URL is required");
+const projectUrl = Deno.env.get("SUPABASE_URL") ?? "https://dbfmjdissqsdhxhmqkqp.supabase.co";
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+if (!serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required");
 
-const sql = postgres(connectionString, {
-  prepare: false,
-  max: 2,
-  idle_timeout: 20,
-  connect_timeout: 10,
-  connection: {
-    application_name: "mandys-dashboard-edge",
-    search_path: "mandys,public",
-  },
-});
-
-type Context = { userId: string; organizationId: string; role: string };
-type ContextResult =
-  | { context: Context; authMs: number; membershipMs: number }
-  | { status: number; body: unknown; authMs: number; membershipMs: number };
+const dashboardRpcUrl = `${projectUrl}/rest/v1/rpc/mandys_dashboard_snapshot`;
 
 type Timing = {
-  authMs?: number;
-  membershipMs?: number;
-  dbMs?: number;
+  sessionMs?: number;
+  rpcMs?: number;
   totalMs?: number;
+};
+
+type DashboardSnapshot = {
+  authenticated?: boolean;
+  organizationId?: string | null;
+  role?: string | null;
+  configured?: boolean;
+  profile?: { publicName?: string } | null;
+  activeLocation?: { id?: string; name?: string; isActive?: boolean } | null;
+  modules?: Array<{ moduleKey: string; status: string }>;
+  today?: {
+    reservationCount?: number;
+    guestCount?: number;
+    nextReservation?: {
+      id: string;
+      guestName: string;
+      startsAt: string;
+      partySize: number;
+      status: string;
+    } | null;
+  };
 };
 
 function serverTiming(timing: Timing): string {
   const parts: string[] = [];
-  if (timing.authMs !== undefined) parts.push(`mandys_auth;dur=${timing.authMs.toFixed(1)}`);
-  if (timing.membershipMs !== undefined) parts.push(`mandys_member;dur=${timing.membershipMs.toFixed(1)}`);
-  if (timing.dbMs !== undefined) parts.push(`mandys_db;dur=${timing.dbMs.toFixed(1)}`);
+  if (timing.sessionMs !== undefined) parts.push(`mandys_session;dur=${timing.sessionMs.toFixed(1)}`);
+  if (timing.rpcMs !== undefined) parts.push(`mandys_rpc;dur=${timing.rpcMs.toFixed(1)}`);
   if (timing.totalMs !== undefined) parts.push(`mandys_edge;dur=${timing.totalMs.toFixed(1)}`);
   return parts.join(", ");
 }
@@ -66,159 +69,50 @@ function allowedOrigin(origin: string | null): boolean {
   }
 }
 
-async function resolveContext(request: Request): Promise<ContextResult> {
-  const cookie = request.headers.get("cookie");
-  if (!cookie) {
-    return {
-      status: 401,
-      body: { error: "UNAUTHENTICATED", message: "Authentication is required" },
-      authMs: 0,
-      membershipMs: 0,
-    };
-  }
+function sessionToken(request: Request): string | null {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return null;
 
-  const authStartedAt = performance.now();
-  const response = await fetch(authSessionUrl, {
-    method: "GET",
-    headers: { cookie, accept: "application/json" },
-    cache: "no-store",
-  });
-  const authMs = performance.now() - authStartedAt;
-  if (!response.ok) {
-    return {
-      status: 401,
-      body: { error: "UNAUTHENTICATED", message: "Session is invalid or expired" },
-      authMs,
-      membershipMs: 0,
-    };
-  }
+  const acceptedNames = new Set(["__Secure-mandys.session_token", "mandys.session_token"]);
+  for (const pair of cookieHeader.split(";")) {
+    const separator = pair.indexOf("=");
+    if (separator <= 0) continue;
+    const name = pair.slice(0, separator).trim();
+    if (!acceptedNames.has(name)) continue;
 
-  const body = (await response.json().catch(() => null)) as any;
-  const userId = body?.user?.id;
-  const organizationId = body?.session?.activeOrganizationId;
-  if (typeof userId !== "string" || typeof organizationId !== "string") {
-    return {
-      status: 401,
-      body: { error: "TENANT_CONTEXT_REQUIRED", message: "Select an active restaurant organization" },
-      authMs,
-      membershipMs: 0,
-    };
-  }
+    const encoded = pair.slice(separator + 1).trim();
+    let value = encoded;
+    try {
+      value = decodeURIComponent(encoded);
+    } catch {
+      // Keep the original value; an exact database lookup will reject invalid tokens.
+    }
 
-  const membershipStartedAt = performance.now();
-  const members = await sql<{ role: string }[]>`
-    select role
-    from mandys.member
-    where organization_id = ${organizationId} and user_id = ${userId}
-    limit 1
-  `;
-  const membershipMs = performance.now() - membershipStartedAt;
-  const role = members[0]?.role;
-  if (!role) {
-    return {
-      status: 403,
-      body: { error: "FORBIDDEN", message: "Organization membership is required" },
-      authMs,
-      membershipMs,
-    };
+    const signatureSeparator = value.indexOf(".");
+    const token = signatureSeparator > 0 ? value.slice(0, signatureSeparator) : value;
+    return token.length >= 20 ? token : null;
   }
-
-  return { context: { userId, organizationId, role }, authMs, membershipMs };
+  return null;
 }
 
-async function dashboard(ctx: Context) {
-  return sql.begin(async (tx) => {
-    await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
-    const rows = await tx<any[]>`
-      with active_location as (
-        select id, name, is_active
-        from mandys.locations
-        where organization_id = ${ctx.organizationId}
-        order by is_active desc, created_at asc
-        limit 1
-      ),
-      profile as (
-        select public_name
-        from mandys.restaurant_profiles
-        where organization_id = ${ctx.organizationId}
-          and (
-            location_id = (select id from active_location)
-            or location_id is null
-          )
-        order by location_id nulls last, created_at asc
-        limit 1
-      ),
-      today_reservations as (
-        select id, guest_name, starts_at, party_size, status
-        from mandys.reservations
-        where organization_id = ${ctx.organizationId}
-          and location_id = (select id from active_location)
-          and (
-            starts_at at time zone coalesce(
-              (select timezone from mandys.tenant_settings where organization_id = ${ctx.organizationId} limit 1),
-              'Europe/Lisbon'
-            )
-          )::date = (
-            now() at time zone coalesce(
-              (select timezone from mandys.tenant_settings where organization_id = ${ctx.organizationId} limit 1),
-              'Europe/Lisbon'
-            )
-          )::date
-          and status not in ('cancelled', 'no_show')
-      )
-      select
-        (exists(select 1 from active_location) and exists(select 1 from profile)) as configured,
-        coalesce(
-          (select jsonb_build_object('publicName', public_name) from profile),
-          'null'::jsonb
-        ) as profile,
-        coalesce(
-          (select jsonb_build_object('id', id, 'name', name, 'isActive', is_active) from active_location),
-          'null'::jsonb
-        ) as active_location,
-        coalesce(
-          (
-            select jsonb_agg(
-              jsonb_build_object('moduleKey', module_key, 'status', status)
-              order by module_key
-            )
-            from mandys.module_entitlements
-            where organization_id = ${ctx.organizationId}
-          ),
-          '[]'::jsonb
-        ) as modules,
-        jsonb_build_object(
-          'reservationCount', (select count(*)::int from today_reservations),
-          'guestCount', (select coalesce(sum(party_size), 0)::int from today_reservations),
-          'nextReservation', (
-            select jsonb_build_object(
-              'id', id,
-              'guestName', guest_name,
-              'startsAt', starts_at,
-              'partySize', party_size,
-              'status', status
-            )
-            from today_reservations
-            where starts_at >= now()
-            order by starts_at asc
-            limit 1
-          )
-        ) as today
-    `;
-
-    const row = rows[0] ?? {};
-    return {
-      data: {
-        configured: Boolean(row.configured),
-        currentRole: ctx.role,
-        profile: row.profile ?? null,
-        activeLocation: row.active_location ?? null,
-        modules: Array.isArray(row.modules) ? row.modules : [],
-        today: row.today ?? { reservationCount: 0, guestCount: 0, nextReservation: null },
-        generatedAt: new Date().toISOString(),
-      },
-    };
+async function readDashboard(token: string): Promise<DashboardSnapshot> {
+  const response = await fetch(dashboardRpcUrl, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ p_session_token: token }),
+    cache: "no-store",
   });
+
+  const body = await response.json().catch(() => null) as DashboardSnapshot | null;
+  if (!response.ok || !body || typeof body !== "object") {
+    throw new Error(`dashboard snapshot RPC failed (${response.status})`);
+  }
+  return body;
 }
 
 Deno.serve(async (request) => {
@@ -233,41 +127,75 @@ Deno.serve(async (request) => {
     return json({ error: "ORIGIN_NOT_ALLOWED", message: "Request origin is not allowed" }, 403);
   }
 
+  const marker = url.pathname.indexOf("/v1/");
+  const path = marker === -1 ? "" : url.pathname.slice(marker);
+  if (request.method !== "GET" || path !== "/v1/dashboard") {
+    return json(
+      { error: "NOT_FOUND", message: "Route not found" },
+      404,
+      { totalMs: performance.now() - totalStartedAt },
+    );
+  }
+
+  const sessionStartedAt = performance.now();
+  const token = sessionToken(request);
+  const sessionMs = performance.now() - sessionStartedAt;
+  if (!token) {
+    return json(
+      { error: "UNAUTHENTICATED", message: "Authentication is required" },
+      401,
+      { sessionMs, totalMs: performance.now() - totalStartedAt },
+    );
+  }
+
   try {
-    const ctxResult = await resolveContext(request);
-    if ("body" in ctxResult) {
-      return json(ctxResult.body, ctxResult.status, {
-        authMs: ctxResult.authMs,
-        membershipMs: ctxResult.membershipMs,
-        totalMs: performance.now() - totalStartedAt,
-      });
+    const rpcStartedAt = performance.now();
+    const snapshot = await readDashboard(token);
+    const rpcMs = performance.now() - rpcStartedAt;
+
+    if (!snapshot.authenticated) {
+      return json(
+        { error: "UNAUTHENTICATED", message: "Session is invalid or expired" },
+        401,
+        { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
+      );
+    }
+    if (!snapshot.organizationId) {
+      return json(
+        { error: "TENANT_CONTEXT_REQUIRED", message: "Select an active restaurant organization" },
+        401,
+        { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
+      );
+    }
+    if (!snapshot.role) {
+      return json(
+        { error: "FORBIDDEN", message: "Organization membership is required" },
+        403,
+        { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
+      );
     }
 
-    const marker = url.pathname.indexOf("/v1/");
-    const path = marker === -1 ? "" : url.pathname.slice(marker);
-    if (request.method !== "GET" || path !== "/v1/dashboard") {
-      return json({ error: "NOT_FOUND", message: "Route not found" }, 404, {
-        authMs: ctxResult.authMs,
-        membershipMs: ctxResult.membershipMs,
-        totalMs: performance.now() - totalStartedAt,
-      });
-    }
-
-    const dbStartedAt = performance.now();
-    const body = await dashboard(ctxResult.context);
-    const dbMs = performance.now() - dbStartedAt;
-    return json(body, 200, {
-      authMs: ctxResult.authMs,
-      membershipMs: ctxResult.membershipMs,
-      dbMs,
-      totalMs: performance.now() - totalStartedAt,
-    });
+    return json(
+      {
+        data: {
+          configured: Boolean(snapshot.configured),
+          currentRole: snapshot.role,
+          profile: snapshot.profile ?? null,
+          activeLocation: snapshot.activeLocation ?? null,
+          modules: Array.isArray(snapshot.modules) ? snapshot.modules : [],
+          today: snapshot.today ?? { reservationCount: 0, guestCount: 0, nextReservation: null },
+          generatedAt: new Date().toISOString(),
+        },
+      },
+      200,
+      { sessionMs, rpcMs, totalMs: performance.now() - totalStartedAt },
+    );
   } catch (error) {
     console.error("mandys-dashboard error", error instanceof Error ? error.message : String(error));
     return json(
       { error: "INTERNAL_ERROR", message: "Dashboard could not be loaded" },
       500,
-      { totalMs: performance.now() - totalStartedAt },
+      { sessionMs, totalMs: performance.now() - totalStartedAt },
     );
   }
 });
