@@ -5,6 +5,13 @@ const backofficeOrigin =
 const storefrontOrigin =
   process.env.MANDYS_STOREFRONT_ORIGIN ?? "https://mandy-store-front.netlify.app";
 
+const reservationCtas = [
+  ["pt-PT", "Reservar mesa"],
+  ["pt-BR", "Reservar mesa"],
+  ["en", "Book a table"],
+  ["es", "Reservar mesa"],
+];
+
 function expectSameOrigin(actualUrl, expectedOrigin) {
   expect(new URL(actualUrl).origin).toBe(new URL(expectedOrigin).origin);
 }
@@ -18,6 +25,17 @@ test("Backoffice browser entry stays on the configured Netlify origin", async ({
   expectSameOrigin(page.url(), backofficeOrigin);
 });
 
+test("Backoffice auth session gateway stays on the configured Netlify origin", async ({ request }) => {
+  const response = await request.get(`${backofficeOrigin}/api/auth/get-session`, {
+    headers: { accept: "application/json" },
+    maxRedirects: 10,
+  });
+
+  expect(response.status()).toBeLessThan(500);
+  expect(response.headers()["content-type"] ?? "").toContain("application/json");
+  expectSameOrigin(response.url(), backofficeOrigin);
+});
+
 test("Storefront browser entry stays on the configured Netlify origin", async ({ page }) => {
   const response = await page.goto(`${storefrontOrigin}/pt-PT`, {
     waitUntil: "domcontentloaded",
@@ -27,19 +45,21 @@ test("Storefront browser entry stays on the configured Netlify origin", async ({
   expectSameOrigin(page.url(), storefrontOrigin);
 });
 
-test("Storefront menu to reservation CTA stays on origin and reaches the live form", async ({ page }) => {
-  const response = await page.goto(`${storefrontOrigin}/pt-PT#menu`, {
-    waitUntil: "domcontentloaded",
+for (const [locale, bookingCta] of reservationCtas) {
+  test(`Storefront ${locale} menu to reservation CTA stays on origin and reaches the live form`, async ({ page }) => {
+    const response = await page.goto(`${storefrontOrigin}/${locale}#menu`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(response?.ok()).toBeTruthy();
+    expectSameOrigin(page.url(), storefrontOrigin);
+
+    await page.getByRole("link", { name: bookingCta, exact: true }).first().click();
+    await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
+    expectSameOrigin(page.url(), storefrontOrigin);
+    expect(new URL(page.url()).hash).toBe("#reserve");
   });
-
-  expect(response?.ok()).toBeTruthy();
-  expectSameOrigin(page.url(), storefrontOrigin);
-
-  await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
-  await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
-  expectSameOrigin(page.url(), storefrontOrigin);
-  expect(new URL(page.url()).hash).toBe("#reserve");
-});
+}
 
 test("Storefront reservation API stays on the configured Netlify origin", async ({ request }) => {
   const response = await request.get(`${storefrontOrigin}/api/reservations?date=2099-01-01&partySize=2`, {
