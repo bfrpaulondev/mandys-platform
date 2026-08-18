@@ -49,13 +49,27 @@ export function OrdersBoard({ locale }: { locale: Locale }) {
   useEffect(() => { void load(); }, [load]);
 
   async function changeStatus(orderId: string, status: OrderStatus) {
-    setBusyId(orderId); setError(null);
+    const previous = orders.find((order) => order.id === orderId);
+    if (!previous || busyId === orderId) return;
+
+    setBusyId(orderId);
+    setError(null);
+    setOrders((current) => current.map((order) => order.id === orderId ? { ...order, status, updatedAt: new Date().toISOString() } : order));
+
     try {
-      const response = await fetch(`/api/orders/v1/orders/${orderId}/status`, { method: "PATCH", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) });
+      const response = await fetch(`/api/orders/v1/orders/${orderId}/status`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
       if (!response.ok) throw new Error(await readError(response));
-      await load();
-    } catch (statusError) { setError(statusError instanceof Error ? statusError.message : "Unexpected error"); }
-    finally { setBusyId(null); }
+    } catch (statusError) {
+      setOrders((current) => current.map((order) => order.id === orderId ? previous : order));
+      setError(statusError instanceof Error ? statusError.message : "Unexpected error");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   const todayKey = new Date().toDateString();
@@ -73,7 +87,7 @@ export function OrdersBoard({ locale }: { locale: Locale }) {
       {error ? <div className="rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4 text-sm text-[var(--mandys-foreground-muted)]">{error}</div> : null}
       {loading ? <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</div>
       : orders.length === 0 ? <div className="rounded-[var(--mandys-radius-lg)] border border-dashed border-[var(--mandys-border)] p-8 text-center text-sm text-[var(--mandys-foreground-muted)]">{c.empty}</div>
-      : <div className="grid gap-4 xl:grid-cols-2">{orders.map((order) => <article key={order.id} className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-5 shadow-[var(--mandys-shadow-sm)]">
+      : <div className="grid gap-4 xl:grid-cols-2">{orders.map((order) => <article key={order.id} aria-busy={busyId === order.id} className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-5 shadow-[var(--mandys-shadow-sm)]">
           <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-semibold">{c.order} #{order.orderNumber}</h2><span className="rounded-full bg-[var(--mandys-surface-muted)] px-2.5 py-1 text-xs font-medium">{c[order.status]}</span></div><p className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{dateFormatter.format(new Date(order.createdAt))} · {c.pickup} · {c.pay}</p></div><div className="text-right"><div className="font-semibold">{money.format(order.totalCents / 100)}</div><div className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{order.items.reduce((sum, item) => sum + item.quantity, 0)} {c.items}</div></div></div>
           <div className="mt-4 border-t border-[var(--mandys-border)] pt-4"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--mandys-foreground-muted)]">{c.customer}</p><p className="mt-1 text-sm font-medium">{order.guestName}</p>{order.guestEmail || order.guestPhone ? <p className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{[order.guestEmail, order.guestPhone].filter(Boolean).join(" · ")}</p> : null}</div>
           <div className="mt-4 space-y-2">{order.items.map((item) => <div key={item.id} className="flex items-start justify-between gap-4 text-sm"><div><span className="font-medium">{item.quantity}× {item.itemName}</span>{item.notes ? <p className="mt-0.5 text-xs text-[var(--mandys-foreground-muted)]">{item.notes}</p> : null}</div><span className="whitespace-nowrap">{money.format(item.lineTotalCents / 100)}</span></div>)}</div>
