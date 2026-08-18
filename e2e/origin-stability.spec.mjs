@@ -5,6 +5,7 @@ const backofficeOrigin =
 const storefrontOrigin =
   process.env.MANDYS_STOREFRONT_ORIGIN ?? "https://mandy-store-front.netlify.app";
 
+const locales = ["pt-PT", "pt-BR", "en", "es"];
 const reservationCtas = [
   ["pt-PT", "Reservar mesa"],
   ["pt-BR", "Reservar mesa"],
@@ -16,14 +17,16 @@ function expectSameOrigin(actualUrl, expectedOrigin) {
   expect(new URL(actualUrl).origin).toBe(new URL(expectedOrigin).origin);
 }
 
-test("Backoffice browser entry stays on the configured Netlify origin", async ({ page }) => {
-  const response = await page.goto(`${backofficeOrigin}/en/login`, {
-    waitUntil: "domcontentloaded",
-  });
+for (const locale of locales) {
+  test(`Backoffice ${locale} browser entry stays on the configured Netlify origin`, async ({ page }) => {
+    const response = await page.goto(`${backofficeOrigin}/${locale}/login`, {
+      waitUntil: "domcontentloaded",
+    });
 
-  expect(response?.ok()).toBeTruthy();
-  expectSameOrigin(page.url(), backofficeOrigin);
-});
+    expect(response?.ok()).toBeTruthy();
+    expectSameOrigin(page.url(), backofficeOrigin);
+  });
+}
 
 test("Backoffice auth session gateway stays on the configured Netlify origin", async ({ request }) => {
   const response = await request.get(`${backofficeOrigin}/api/auth/get-session`, {
