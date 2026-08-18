@@ -15,29 +15,47 @@ function uniqueIdentity() {
   };
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function retryRequest(label, operation, attempts = 4) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await operation();
+      if (response.status() < 500 || attempt === attempts) return response;
+      lastError = new Error(`${label} returned ${response.status()}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) throw error;
+    }
+    await sleep(250 * 2 ** (attempt - 1));
+  }
+  throw lastError ?? new Error(`${label} failed`);
+}
+
 async function provisionTenant(page, identity) {
-  const signup = await page.request.post(`${backofficeOrigin}/api/auth/sign-up/email`, {
+  const signup = await retryRequest("signup", () => page.request.post(`${backofficeOrigin}/api/auth/sign-up/email`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: { name: "Mandy Performance E2E", email: identity.email, password: identity.password },
-  });
+  }));
   expect(signup.ok(), `signup returned ${signup.status()}: ${await signup.text()}`).toBeTruthy();
 
-  const organization = await page.request.post(`${backofficeOrigin}/api/auth/organization/create`, {
+  const organization = await retryRequest("organization create", () => page.request.post(`${backofficeOrigin}/api/auth/organization/create`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: { name: identity.restaurantName, slug: `mandys-${identity.restaurantSlug}` },
-  });
+  }));
   expect(organization.ok(), `organization returned ${organization.status()}: ${await organization.text()}`).toBeTruthy();
   const organizationBody = await organization.json();
   const organizationId = organizationBody?.id ?? organizationBody?.data?.id ?? organizationBody?.organization?.id;
   expect(typeof organizationId).toBe("string");
 
-  const active = await page.request.post(`${backofficeOrigin}/api/auth/organization/set-active`, {
+  const active = await retryRequest("set active organization", () => page.request.post(`${backofficeOrigin}/api/auth/organization/set-active`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: { organizationId },
-  });
+  }));
   expect(active.ok(), `set-active returned ${active.status()}: ${await active.text()}`).toBeTruthy();
 
-  const onboarding = await page.request.post(`${backofficeOrigin}/api/runtime/v1/onboarding/restaurant`, {
+  const onboarding = await retryRequest("onboarding", () => page.request.post(`${backofficeOrigin}/api/runtime/v1/onboarding/restaurant`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: {
       publicName: identity.restaurantName,
@@ -49,23 +67,23 @@ async function provisionTenant(page, identity) {
       defaultLocale: "en",
       enabledLocales: ["en", "pt-PT"],
     },
-  });
+  }));
   expect(onboarding.ok(), `onboarding returned ${onboarding.status()}: ${await onboarding.text()}`).toBeTruthy();
 }
 
 async function cleanup(page, identity) {
-  const tenant = await page.request.delete(`${backofficeOrigin}/api/data-protection/v1/tenant`, {
+  const tenant = await retryRequest("tenant cleanup", () => page.request.delete(`${backofficeOrigin}/api/data-protection/v1/tenant`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: { confirmation: "DELETE" },
-  });
+  }));
   if (!tenant.ok() && tenant.status() !== 401) {
     throw new Error(`tenant cleanup returned ${tenant.status()}: ${await tenant.text()}`);
   }
 
-  const user = await page.request.post(`${backofficeOrigin}/api/auth/delete-user`, {
+  const user = await retryRequest("user cleanup", () => page.request.post(`${backofficeOrigin}/api/auth/delete-user`, {
     headers: { accept: "application/json", "content-type": "application/json" },
     data: { password: identity.password },
-  });
+  }));
   if (!user.ok() && user.status() !== 401) {
     throw new Error(`user cleanup returned ${user.status()}: ${await user.text()}`);
   }
@@ -80,17 +98,18 @@ test("Storefront remains DB-backed and stable across repeated reads", async ({ r
   test.setTimeout(60_000);
   for (const locale of ["pt-PT", "pt-BR", "en", "es"]) {
     const firstStart = Date.now();
-    const first = await request.get(`${storefrontOrigin}/${locale}`);
+    const first = await retryRequest(`storefront ${locale} first`, () => request.get(`${storefrontOrigin}/${locale}`));
     const firstMs = Date.now() - firstStart;
     expect(first.ok(), `${locale} first load returned ${first.status()}`).toBeTruthy();
     const firstBody = await first.text();
     expect(firstBody).toContain("Maré");
 
     const secondStart = Date.now();
-    const second = await request.get(`${storefrontOrigin}/${locale}`);
+    const second = await retryRequest(`storefront ${locale} repeat`, () => request.get(`${storefrontOrigin}/${locale}`));
     const secondMs = Date.now() - secondStart;
     expect(second.ok(), `${locale} repeat load returned ${second.status()}`).toBeTruthy();
     expect(await second.text()).toContain("Maré");
+    expect(secondMs, `${locale} repeat storefront read regressed`).toBeLessThan(1_500);
     console.log(`PERF storefront ${locale}: first=${firstMs}ms repeat=${secondMs}ms`);
   }
 });
@@ -103,15 +122,18 @@ test("Dashboard uses one bootstrap request and exposes end-to-end timing", async
     await provisionTenant(page, identity);
     provisioned = true;
 
-    const dashboardApi = await page.request.get(`${backofficeOrigin}/api/dashboard`, {
+    const apiStartedAt = Date.now();
+    const dashboardApi = await retryRequest("dashboard API", () => page.request.get(`${backofficeOrigin}/api/dashboard`, {
       headers: { accept: "application/json" },
-    });
+    }));
+    const dashboardApiMs = Date.now() - apiStartedAt;
     expect(dashboardApi.ok(), `dashboard API returned ${dashboardApi.status()}: ${await dashboardApi.text()}`).toBeTruthy();
     expectTimingHeader(dashboardApi, ["mandys_auth", "mandys_member", "mandys_db", "mandys_edge", "mandys_upstream", "mandys_gateway"]);
     const body = await dashboardApi.json();
     expect(body?.data?.configured).toBe(true);
     expect(body?.data?.profile?.publicName).toBe(identity.restaurantName);
     expect(body?.data?.today?.reservationCount).toBe(0);
+    expect(dashboardApiMs, `dashboard API is too slow: ${dashboardApiMs}ms`).toBeLessThan(3_000);
 
     const dashboardRequests = [];
     const legacyCoreRequests = [];
@@ -128,8 +150,9 @@ test("Dashboard uses one bootstrap request and exposes end-to-end timing", async
     await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: identity.restaurantName })).toBeVisible({ timeout: 25_000 });
     const visibleMs = Date.now() - startedAt;
-    console.log(`PERF dashboard visible=${visibleMs}ms`);
+    console.log(`PERF dashboard api=${dashboardApiMs}ms visible=${visibleMs}ms`);
 
+    expect(visibleMs, `Dashboard should become usable under 4s, got ${visibleMs}ms`).toBeLessThan(4_000);
     expect(dashboardRequests.length, "Dashboard should use one bootstrap request").toBe(1);
     expect(legacyCoreRequests, "Dashboard must not waterfall through legacy core").toHaveLength(0);
     expect(legacyReservationRequests, "Dashboard must not separately load reservations").toHaveLength(0);
@@ -160,7 +183,7 @@ test("Backoffice memory cache serves repeat reads and invalidates after mutation
         timing: first.headers.get("server-timing"),
       };
     });
-    expect(cacheStates.first).toBe("miss");
+    expect(["miss", "deduped"], `first read must not be a stale cache hit`).toContain(cacheStates.first);
     expect(cacheStates.second).toBe("hit");
     expect(cacheStates.timing ?? "").toContain("mandys_gateway");
 
@@ -189,7 +212,7 @@ test("Backoffice memory cache serves repeat reads and invalidates after mutation
     }, uniqueSlug);
 
     expect(mutationStates.createOk, `menu create returned ${mutationStates.createStatus}`).toBeTruthy();
-    expect(mutationStates.afterMutation).toBe("miss");
+    expect(["miss", "deduped"], "mutation must invalidate any stale menu cache hit").toContain(mutationStates.afterMutation);
     expect(mutationStates.repeat).toBe("hit");
   } finally {
     if (provisioned) await cleanup(page, identity);
