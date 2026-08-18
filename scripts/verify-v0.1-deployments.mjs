@@ -101,6 +101,11 @@ const targets = [
     requiredText: ["Mandy"],
   })),
   {
+    name: "Backoffice protected reservations route",
+    url: `${backofficeOrigin}/en/reservations`,
+    requiredText: ["Mandy"],
+  },
+  {
     name: "Backoffice health",
     url: `${backofficeOrigin}/api/health`,
     requiredText: ["ok", backofficeReadinessVersion],
@@ -220,5 +225,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nPublic deployment smoke checks passed with localized Backoffice entrypoints, the required Backoffice readiness version, a DB-backed Storefront, localized reservation surface, live reservation policy contract and origin-stable Netlify routing. Browser E2E is still required before V0.1 is declared ready.",
+  "\nPublic deployment smoke checks passed with localized Backoffice entrypoints, protected Backoffice routing, the required Backoffice readiness version, a DB-backed Storefront, localized reservation surface, live reservation policy contract and origin-stable Netlify routing. Browser E2E is still required before V0.1 is declared ready.",
 );
