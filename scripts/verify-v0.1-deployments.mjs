@@ -60,7 +60,7 @@ async function fetchWithTransientRetry(target) {
       const response = await fetch(target.url, {
         redirect: "follow",
         signal: controller.signal,
-        headers: { "user-agent": "mandys-v0.1-readiness-check/1.7" },
+        headers: { "user-agent": "mandys-v0.1-readiness-check/1.8" },
       });
 
       if (!transientStatuses.has(response.status) || attempt === maxAttempts) {
@@ -167,8 +167,17 @@ for (const target of targets) {
     const contentTypeMismatch =
       target.requiredContentType !== undefined &&
       !contentType.toLocaleLowerCase().includes(target.requiredContentType.toLocaleLowerCase());
+    const expectedOrigin = new URL(target.url).origin;
+    const finalOrigin = new URL(response.url).origin;
+    const originMismatch = finalOrigin !== expectedOrigin;
 
-    if (!response.ok || missing.length > 0 || forbidden.length > 0 || contentTypeMismatch) {
+    if (
+      !response.ok ||
+      missing.length > 0 ||
+      forbidden.length > 0 ||
+      contentTypeMismatch ||
+      originMismatch
+    ) {
       failures.push({
         name: target.name,
         status: response.status,
@@ -179,6 +188,7 @@ for (const target of targets) {
         ...(contentTypeMismatch
           ? { expectedContentType: target.requiredContentType, actualContentType: contentType }
           : {}),
+        ...(originMismatch ? { expectedOrigin, finalOrigin } : {}),
       });
       console.error(`FAIL ${target.name}: ${response.status} ${response.url}`);
       continue;
@@ -206,5 +216,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nPublic deployment smoke checks passed with the required Backoffice readiness version, a DB-backed Storefront, localized reservation surface and live reservation policy contract. Browser E2E is still required before V0.1 is declared ready.",
+  "\nPublic deployment smoke checks passed with the required Backoffice readiness version, a DB-backed Storefront, localized reservation surface, live reservation policy contract and origin-stable Netlify routing. Browser E2E is still required before V0.1 is declared ready.",
 );
