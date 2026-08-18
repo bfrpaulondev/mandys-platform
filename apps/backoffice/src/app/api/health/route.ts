@@ -8,6 +8,7 @@ export function GET() {
       service: "mandys-backoffice",
       status: "ok",
       readinessVersion: "authenticated-lifecycle-v1",
+      performanceVersion: "perf-6-10-stable-v1",
     },
     {
       status: 200,
