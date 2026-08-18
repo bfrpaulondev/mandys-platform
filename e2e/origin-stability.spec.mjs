@@ -27,6 +27,20 @@ test("Storefront browser entry stays on the configured Netlify origin", async ({
   expectSameOrigin(page.url(), storefrontOrigin);
 });
 
+test("Storefront menu to reservation CTA stays on origin and reaches the live form", async ({ page }) => {
+  const response = await page.goto(`${storefrontOrigin}/pt-PT#menu`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  expect(response?.ok()).toBeTruthy();
+  expectSameOrigin(page.url(), storefrontOrigin);
+
+  await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
+  await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
+  expectSameOrigin(page.url(), storefrontOrigin);
+  expect(new URL(page.url()).hash).toBe("#reserve");
+});
+
 test("Storefront reservation API stays on the configured Netlify origin", async ({ request }) => {
   const response = await request.get(`${storefrontOrigin}/api/reservations?date=2099-01-01&partySize=2`, {
     headers: { accept: "application/json" },
