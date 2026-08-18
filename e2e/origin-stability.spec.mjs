@@ -26,6 +26,16 @@ for (const locale of locales) {
     expect(response?.ok()).toBeTruthy();
     expectSameOrigin(page.url(), backofficeOrigin);
   });
+
+  test(`Backoffice ${locale} protected entry returns unauthenticated users to the locale login on origin`, async ({ page }) => {
+    const response = await page.goto(`${backofficeOrigin}/${locale}/reservations`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(response?.status() ?? 200).toBeLessThan(500);
+    await expect(page).toHaveURL(`${backofficeOrigin}/${locale}/login`, { timeout: 15_000 });
+    expectSameOrigin(page.url(), backofficeOrigin);
+  });
 }
 
 test("Backoffice auth session gateway stays on the configured Netlify origin", async ({ request }) => {
@@ -37,6 +47,20 @@ test("Backoffice auth session gateway stays on the configured Netlify origin", a
   expect(response.status()).toBeLessThan(500);
   expect(response.headers()["content-type"] ?? "").toContain("application/json");
   expectSameOrigin(response.url(), backofficeOrigin);
+});
+
+test("Backoffice protected runtime gateway rejects missing tenant context on the configured Netlify origin", async ({ request }) => {
+  const response = await request.get(`${backofficeOrigin}/api/runtime/v1/core`, {
+    headers: { accept: "application/json" },
+    maxRedirects: 10,
+  });
+
+  expect(response.status()).toBe(401);
+  expect(response.headers()["content-type"] ?? "").toContain("application/json");
+  expectSameOrigin(response.url(), backofficeOrigin);
+
+  const body = await response.json();
+  expect(["UNAUTHORIZED", "TENANT_CONTEXT_REQUIRED"]).toContain(body?.error);
 });
 
 test("Storefront browser entry stays on the configured Netlify origin", async ({ page }) => {
