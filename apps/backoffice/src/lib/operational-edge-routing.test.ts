@@ -36,5 +36,6 @@ describe("Netlify operational Edge routing", () => {
     expect(operationalTargetFor(new Request("https://mandyplataform.netlify.app/api/auth/get-session"))).toBeNull();
     expect(operationalTargetFor(new Request("https://mandyplataform.netlify.app/api/data-protection/v1/export"))).toBeNull();
     expect(operationalTargetFor(new Request("https://mandyplataform.netlify.app/api/menu"))).toBeNull();
+    expect(operationalTargetFor(new Request("https://mandyplataform.netlify.app/api/toString/v1/anything"))).toBeNull();
   });
 });
