@@ -12,6 +12,7 @@ const backofficeReadinessVersion =
 const reservationProbeTimezone =
   process.env.MANDYS_RESERVATION_PROBE_TIMEZONE ?? "Europe/Lisbon";
 
+const backofficeLocales = ["pt-PT", "pt-BR", "en", "es"];
 const storefrontLocales = [
   ["pt-PT", "Português (Portugal)", "Reserve diretamente", "Reservar mesa"],
   ["pt-BR", "Português (Brasil)", "Reserve diretamente", "Reservar mesa"],
@@ -91,11 +92,14 @@ const reservationProbeDate =
   process.env.MANDYS_RESERVATION_PROBE_DATE ?? futureDateValue();
 
 const targets = [
-  {
-    name: "Backoffice login",
-    url: process.env.MANDYS_BACKOFFICE_URL ?? `${backofficeOrigin}/en/login`,
+  ...backofficeLocales.map((locale) => ({
+    name: `Backoffice ${locale} login`,
+    url:
+      locale === "en" && process.env.MANDYS_BACKOFFICE_URL
+        ? process.env.MANDYS_BACKOFFICE_URL
+        : `${backofficeOrigin}/${locale}/login`,
     requiredText: ["Mandy"],
-  },
+  })),
   {
     name: "Backoffice health",
     url: `${backofficeOrigin}/api/health`,
@@ -216,5 +220,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nPublic deployment smoke checks passed with the required Backoffice readiness version, a DB-backed Storefront, localized reservation surface, live reservation policy contract and origin-stable Netlify routing. Browser E2E is still required before V0.1 is declared ready.",
+  "\nPublic deployment smoke checks passed with localized Backoffice entrypoints, the required Backoffice readiness version, a DB-backed Storefront, localized reservation surface, live reservation policy contract and origin-stable Netlify routing. Browser E2E is still required before V0.1 is declared ready.",
 );
