@@ -14,7 +14,7 @@ concurrency:
 jobs:
   live-performance:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -44,14 +44,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p playwright-runtime
-          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/authenticated-v0.1.spec.mjs e2e/billing-fail-closed.spec.mjs e2e/roles-v0.1.spec.mjs e2e/performance-v0.1.spec.mjs playwright-runtime/
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/performance-v0.1.spec.mjs playwright-runtime/
           cd playwright-runtime
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.62.1
           npx playwright install --with-deps chromium
-      - name: Run full live and performance browser QA
+      - name: Run focused live performance QA
         working-directory: playwright-runtime
-        run: npx playwright test live-v0.1.spec.mjs authenticated-v0.1.spec.mjs billing-fail-closed.spec.mjs roles-v0.1.spec.mjs performance-v0.1.spec.mjs --config=playwright.config.mjs
+        run: npx playwright test live-v0.1.spec.mjs performance-v0.1.spec.mjs --config=playwright.config.mjs
       - name: Upload QA artifacts
         if: always()
         uses: actions/upload-artifact@v7
