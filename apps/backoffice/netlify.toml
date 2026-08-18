@@ -1,7 +1,12 @@
 [build]
 command = "pnpm --filter @mandys/backoffice build"
+edge_functions = "netlify/edge-functions"
 
 [build.environment]
 NODE_VERSION = "24"
 PNPM_VERSION = "10.15.0"
 PNPM_FLAGS = "--shamefully-hoist"
+
+[[edge_functions]]
+function = "dashboard"
+path = "/api/dashboard"
