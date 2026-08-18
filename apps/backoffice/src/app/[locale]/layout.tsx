@@ -2,6 +2,7 @@ import { isLocale, locales, type Locale } from "@mandys/i18n";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { BackofficeCacheBoundary } from "./backoffice-cache-boundary";
 import { SessionBoundary } from "./session-boundary";
 
 export function generateStaticParams(): Array<{ locale: Locale }> {
@@ -18,5 +19,9 @@ export default async function LocaleLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
-  return <SessionBoundary locale={locale}>{children}</SessionBoundary>;
+  return (
+    <BackofficeCacheBoundary>
+      <SessionBoundary locale={locale}>{children}</SessionBoundary>
+    </BackofficeCacheBoundary>
+  );
 }
