@@ -5,6 +5,7 @@ const transientStatuses = new Set([408, 429, 502, 503, 504]);
 
 const services = [
   { slug: "mandys-auth", service: "mandys-auth" },
+  { slug: "mandys-dashboard", service: "mandys-dashboard" },
   { slug: "mandys-billing", service: "mandys-billing" },
   {
     slug: "mandys-billing-webhook",
