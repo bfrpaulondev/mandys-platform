@@ -36,11 +36,21 @@ function hasRole(role: string | null, allowed: readonly string[]) {
   return role !== null && allowed.includes(role);
 }
 
+function dataPrefetchForHref(href: string): string | null {
+  if (href.endsWith("/menu")) return "/api/menu/v1/menu";
+  if (href.endsWith("/orders")) return "/api/orders/v1/orders?limit=200";
+  if (href.endsWith("/customers")) return "/api/crm/v1/customers";
+  if (href.endsWith("/stock")) return "/api/stock/v1/stock";
+  if (href.endsWith("/notifications")) return "/api/notifications/v1/notifications?limit=150";
+  return null;
+}
+
 export function SessionBoundary({ locale, children }: { locale: Locale; children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLogin = pathname.endsWith("/login");
   const checkedRef = useRef(false);
+  const warmedDataRef = useRef(new Set<string>());
   const [state, setState] = useState<"checking" | "ready" | "unavailable">(isLogin ? "ready" : "checking");
   const [role, setRole] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -72,8 +82,10 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
           return;
         }
 
-        const endpoint = pathname === `/${locale}` ? "/api/dashboard" : "/api/runtime/v1/core";
-        const response = await fetch(endpoint, { credentials: "include" });
+        // The fast dashboard snapshot already resolves the opaque Better Auth
+        // session, active organization and role in one Edge-backed request.
+        // Reuse it for every protected entrypoint instead of calling core again.
+        const response = await fetch("/api/dashboard", { credentials: "include" });
         const body = (await response.json().catch(() => null)) as ProtectedContextResponse | null;
         if (cancelled) return;
 
@@ -104,11 +116,22 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
     return () => { cancelled = true; };
   }, [isLogin, locale, pathname, router]);
 
+  function warmNavigation(href: string) {
+    router.prefetch(href);
+    const dataUrl = dataPrefetchForHref(href);
+    if (!dataUrl || warmedDataRef.current.has(dataUrl)) return;
+    warmedDataRef.current.add(dataUrl);
+    void fetch(dataUrl, { credentials: "include" }).catch(() => {
+      warmedDataRef.current.delete(dataUrl);
+    });
+  }
+
   async function signOut() {
     setSigningOut(true);
     try {
       await authClient.signOut();
       checkedRef.current = false;
+      warmedDataRef.current.clear();
       router.replace(`/${locale}/login`);
       router.refresh();
     } finally {
@@ -142,11 +165,11 @@ export function SessionBoundary({ locale, children }: { locale: Locale; children
       <>
         <nav className="sticky top-0 z-40 border-b border-[var(--mandys-border)] bg-[var(--mandys-background)]/95 backdrop-blur" aria-label="Mandy's">
           <div className="mx-auto flex w-full max-w-[1500px] items-center gap-2 overflow-x-auto px-4 py-3 sm:px-6 lg:px-8">
-            <Link href={`/${locale}`} className="mr-2 shrink-0 text-sm font-bold tracking-[-0.03em]">Mandy&apos;s</Link>
+            <Link href={`/${locale}`} prefetch className="mr-2 shrink-0 text-sm font-bold tracking-[-0.03em]" onMouseEnter={() => warmNavigation(`/${locale}`)} onFocus={() => warmNavigation(`/${locale}`)}>Mandy&apos;s</Link>
             {links.map((link) => {
               const active = link.exact ? pathname === link.href : pathname.startsWith(link.href);
               return (
-                <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "text-[var(--mandys-foreground-muted)] hover:bg-[var(--mandys-surface-muted)] hover:text-[var(--mandys-foreground)]"}`}>
+                <Link key={link.href} href={link.href} prefetch aria-current={active ? "page" : undefined} onMouseEnter={() => warmNavigation(link.href)} onFocus={() => warmNavigation(link.href)} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${active ? "bg-[var(--mandys-foreground)] text-[var(--mandys-background)]" : "text-[var(--mandys-foreground-muted)] hover:bg-[var(--mandys-surface-muted)] hover:text-[var(--mandys-foreground)]"}`}>
                   {link.label}
                 </Link>
               );

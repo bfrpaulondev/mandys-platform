@@ -25,6 +25,7 @@ const policies: Array<{ prefix: string; policy: CachePolicy }> = [
   { prefix: "/api/dashboard", policy: { namespace: "dashboard", ttlMs: 5_000 } },
   { prefix: "/api/reservations/", policy: { namespace: "reservations", ttlMs: 3_000 } },
   { prefix: "/api/orders/", policy: { namespace: "orders", ttlMs: 3_000 } },
+  { prefix: "/api/notifications/", policy: { namespace: "notifications", ttlMs: 3_000 } },
   { prefix: "/api/stock/", policy: { namespace: "stock", ttlMs: 5_000 } },
   { prefix: "/api/crm/", policy: { namespace: "crm", ttlMs: 10_000 } },
   { prefix: "/api/menu/", policy: { namespace: "menu", ttlMs: 20_000 } },
