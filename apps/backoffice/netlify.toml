@@ -1,6 +1,6 @@
 [build]
 command = "pnpm --filter @mandys/backoffice build"
-edge_functions = "netlify/edge-functions"
+edge_functions = "apps/backoffice/netlify/edge-functions"
 
 [build.environment]
 NODE_VERSION = "24"
