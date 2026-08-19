@@ -15,6 +15,16 @@ Implementação preparada em 2026-08-19.
 - **19 — Tablet:** navegação própria abaixo de 1280px em grid responsivo e conteúdo fluido.
 - **20 — Acessibilidade:** skip-link, `aria-current`, `aria-expanded`, `aria-pressed`, `aria-busy`, live regions, foco visível e reduced motion.
 
+## Runtime sincronizado
+
+Depois de identificar que o E2E anterior falhava porque o CRM publicado ainda ignorava `limit`/`offset`, os runtimes foram sincronizados com o código de `main`:
+
+- `mandys-crm` — v2, com paginação real.
+- `mandys-orders` — v3, com paginação real e itens limitados à página atual.
+- `mandys-notifications` — v2, com paginação real e contadores globais preservados.
+
+Este checkpoint é posterior aos três deploys e serve como ponto de partida para a certificação final do sprint.
+
 ## Certificação exigida antes de fechar o backlog
 
 As tarefas 11–20 permanecem `[ ]` até o commit passar o pipeline aplicável em `main`, incluindo quality/build, smoke/live readiness e browser E2E. O E2E do sprint verifica paginação, optimistic rollback, toasts, tablet/mobile, touch target, ausência de overflow horizontal e skip-link.
