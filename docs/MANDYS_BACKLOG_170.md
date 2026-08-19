@@ -10,9 +10,9 @@
 
 ## Progresso atual
 
-**21 / 170 concluídas (12,4%)**
+**22 / 170 concluídas (12,9%)**
 
-As tarefas **1–20 e 123** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. As tarefas 11–20 foram certificadas com **CI = success**, **Security = success** e **Tasks 11-20 live QA = success** no PR QA-only #60, fechado sem merge. A tarefa 123 foi certificada com **CI = success** e **Security = success**, incluindo auditoria de dependências e varredura de segredos no histórico Git. As demais tarefas permanecem abertas até validação completa.
+As tarefas **1–21 e 123** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. As tarefas 11–20 foram certificadas com **CI = success**, **Security = success** e **Tasks 11-20 live QA = success** no PR QA-only #60, fechado sem merge. A tarefa 21 foi certificada após a integração do PR #61, com **CI = success**, **Security = success** e **Task 21 live QA = success** no PR QA-only #62, que deve ser fechado sem merge. A tarefa 123 foi certificada com **CI = success** e **Security = success**, incluindo auditoria de dependências e varredura de segredos no histórico Git. As demais tarefas permanecem abertas até validação completa.
 
 ## 1–10 — Performance inicial
 
@@ -42,7 +42,7 @@ As tarefas **1–20 e 123** estão completamente concluídas. A certificação f
 
 ## 21–30 — Conta, onboarding e configurações
 
-- [ ] **21.** Consistência geral da UI
+- [x] **21.** Consistência geral da UI
 - [ ] **22.** Perfil do utilizador
 - [ ] **23.** Alteração de password
 - [ ] **24.** Recuperação/reset de password
