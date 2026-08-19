@@ -1,5 +1,5 @@
 import { isLocale } from "@mandys/i18n";
-import { PageHeader, PageShell } from "@mandys/ui";
+import { PageHeader, PageShell, pageBackLinkClassName } from "@mandys/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -19,7 +19,7 @@ export default async function CustomersPage({ params }: { params: Promise<{ loca
   return (
     <PageShell>
       <PageHeader
-        back={<Link href={`/${locale}`} className="text-sm font-medium text-[var(--mandys-foreground-muted)] hover:text-[var(--mandys-foreground)]">← {c.back}</Link>}
+        back={<Link href={`/${locale}`} className={pageBackLinkClassName}>← {c.back}</Link>}
         eyebrow={c.eyebrow}
         title={c.title}
         subtitle={c.subtitle}
