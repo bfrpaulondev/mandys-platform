@@ -173,7 +173,7 @@ function parseItems(value: unknown): Array<{ menuItemId: string; quantity: numbe
   if (!Array.isArray(value) || value.length < 1 || value.length > 50) return null;
   const parsed = value.map((entry: any) => ({ menuItemId: entry?.menuItemId, quantity: Number(entry?.quantity), notes: entry?.notes ? text(entry.notes, 1, 500) : null }));
   if (parsed.some((item) => !isUuid(item.menuItemId) || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100 || (value.find((entry: any) => entry?.menuItemId === item.menuItemId)?.notes && !item.notes))) return null;
-  if (new Set(parsed.map((item) => item.menuItemId).size !== parsed.length)) return null;
+  if (new Set(parsed.map((item) => item.menuItemId)).size !== parsed.length) return null;
   return parsed;
 }
 
