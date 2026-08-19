@@ -10,9 +10,9 @@
 
 ## Progresso atual
 
-**10 / 170 concluídas (5,9%)**
+**11 / 170 concluídas (6,5%)**
 
-As tarefas **1–10** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. As tarefas 11–170 permanecem abertas até validação completa.
+As tarefas **1–10 e 123** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. A tarefa 123 foi certificada com **CI = success** e **Security = success**, incluindo auditoria de dependências e varredura de segredos no histórico Git. As demais tarefas permanecem abertas até validação completa.
 
 ## 1–10 — Performance inicial
 
@@ -174,7 +174,7 @@ As tarefas **1–10** estão completamente concluídas. A certificação final d
 
 - [ ] **121.** CSP
 - [ ] **122.** Hardening de cookies/sessão
-- [ ] **123.** Dependências + secret scanning
+- [x] **123.** Dependências + secret scanning
 - [ ] **124.** Remover funções temporárias/teste
 - [ ] **125.** Health dashboard
 - [ ] **126.** Logs de latência
