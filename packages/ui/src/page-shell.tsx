@@ -23,7 +23,7 @@ export function PageShell({ className, children, ...props }: PageShellProps) {
   );
 }
 
-export type PageHeaderProps = HTMLAttributes<HTMLElement> & {
+export type PageHeaderProps = Omit<HTMLAttributes<HTMLElement>, "title"> & {
   back?: ReactNode;
   eyebrow?: ReactNode;
   title: ReactNode;
