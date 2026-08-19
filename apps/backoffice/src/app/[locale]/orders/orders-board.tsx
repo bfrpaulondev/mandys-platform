@@ -7,8 +7,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 type OrderStatus = "pending" | "accepted" | "preparing" | "ready" | "completed" | "cancelled";
 type OrderItem = { id: string; menuItemId: string | null; itemName: string; unitPriceCents: number; quantity: number; lineTotalCents: number; notes: string | null };
 type Order = { id: string; orderNumber: number; status: OrderStatus; fulfillmentType: string; paymentMethod: string; currency: string; subtotalCents: number; totalCents: number; scheduledFor: string | null; guestName: string; guestEmail: string | null; guestPhone: string | null; notes: string | null; source: string; createdAt: string; updatedAt: string; items: OrderItem[] };
-type OrdersResponse = { data: Order[] };
+type Pagination = { limit: number; offset: number; hasMore: boolean };
+type OrdersSummary = { today: number; open: number; ready: number; completedValueCents: number; currency: string };
+type OrdersResponse = { data: Order[]; pagination: Pagination; summary: OrdersSummary };
 type ErrorResponse = { message?: string };
+
+const PAGE_SIZE = 25;
 
 const transitions: Record<OrderStatus, Array<{ status: OrderStatus; key: "accept" | "prepare" | "ready" | "complete" | "cancel" }>> = {
   pending: [{ status: "accepted", key: "accept" }, { status: "cancelled", key: "cancel" }],
@@ -19,10 +23,10 @@ const transitions: Record<OrderStatus, Array<{ status: OrderStatus; key: "accept
 };
 
 const copy = {
-  "pt-PT": { subtitle: "Takeaway com pagamento no levantamento. Os pedidos entram diretamente aqui e avançam pela cozinha até à entrega.", refresh: "Atualizar", loading: "A carregar pedidos…", empty: "Ainda não existem pedidos.", pending: "Novo", accepted: "Aceite", preparing: "Em preparação", ready: "Pronto", completed: "Entregue", cancelled: "Cancelado", accept: "Aceitar", prepare: "Preparar", complete: "Entregue", cancel: "Cancelar", pickup: "Levantamento", pay: "Pagamento no levantamento", items: "itens", today: "Pedidos hoje", open: "Em aberto", readyCount: "Prontos", revenue: "Valor concluído", customer: "Cliente", order: "Pedido", source: "Origem" },
-  "pt-BR": { subtitle: "Takeaway com pagamento na retirada. Os pedidos entram diretamente aqui e avançam pela cozinha até a entrega.", refresh: "Atualizar", loading: "Carregando pedidos…", empty: "Ainda não existem pedidos.", pending: "Novo", accepted: "Aceito", preparing: "Em preparação", ready: "Pronto", completed: "Entregue", cancelled: "Cancelado", accept: "Aceitar", prepare: "Preparar", complete: "Entregue", cancel: "Cancelar", pickup: "Retirada", pay: "Pagamento na retirada", items: "itens", today: "Pedidos hoje", open: "Em aberto", readyCount: "Prontos", revenue: "Valor concluído", customer: "Cliente", order: "Pedido", source: "Origem" },
-  en: { subtitle: "Takeaway with payment at pickup. Orders arrive here and move through the kitchen until handoff.", refresh: "Refresh", loading: "Loading orders…", empty: "There are no orders yet.", pending: "New", accepted: "Accepted", preparing: "Preparing", ready: "Ready", completed: "Completed", cancelled: "Cancelled", accept: "Accept", prepare: "Start preparing", complete: "Handed over", cancel: "Cancel", pickup: "Pickup", pay: "Pay at pickup", items: "items", today: "Orders today", open: "Open", readyCount: "Ready", revenue: "Completed value", customer: "Customer", order: "Order", source: "Source" },
-  es: { subtitle: "Takeaway con pago al recoger. Los pedidos llegan directamente aquí y avanzan por cocina hasta la entrega.", refresh: "Actualizar", loading: "Cargando pedidos…", empty: "Todavía no hay pedidos.", pending: "Nuevo", accepted: "Aceptado", preparing: "En preparación", ready: "Listo", completed: "Entregado", cancelled: "Cancelado", accept: "Aceptar", prepare: "Preparar", complete: "Entregado", cancel: "Cancelar", pickup: "Recogida", pay: "Pago al recoger", items: "artículos", today: "Pedidos hoy", open: "Abiertos", readyCount: "Listos", revenue: "Valor completado", customer: "Cliente", order: "Pedido", source: "Origen" },
+  "pt-PT": { subtitle: "Takeaway com pagamento no levantamento. Os pedidos entram diretamente aqui e avançam pela cozinha até à entrega.", refresh: "Atualizar", loading: "A carregar pedidos…", empty: "Ainda não existem pedidos.", pending: "Novo", accepted: "Aceite", preparing: "Em preparação", ready: "Pronto", completed: "Entregue", cancelled: "Cancelado", accept: "Aceitar", prepare: "Preparar", complete: "Entregue", cancel: "Cancelar", pickup: "Levantamento", pay: "Pagamento no levantamento", items: "itens", today: "Pedidos hoje", open: "Em aberto", readyCount: "Prontos", revenue: "Valor concluído", customer: "Cliente", order: "Pedido", source: "Origem", previous: "Anterior", next: "Seguinte", page: "Página" },
+  "pt-BR": { subtitle: "Takeaway com pagamento na retirada. Os pedidos entram diretamente aqui e avançam pela cozinha até a entrega.", refresh: "Atualizar", loading: "Carregando pedidos…", empty: "Ainda não existem pedidos.", pending: "Novo", accepted: "Aceito", preparing: "Em preparação", ready: "Pronto", completed: "Entregue", cancelled: "Cancelado", accept: "Aceitar", prepare: "Preparar", complete: "Entregue", cancel: "Cancelar", pickup: "Retirada", pay: "Pagamento na retirada", items: "itens", today: "Pedidos hoje", open: "Em aberto", readyCount: "Prontos", revenue: "Valor concluído", customer: "Cliente", order: "Pedido", source: "Origem", previous: "Anterior", next: "Próxima", page: "Página" },
+  en: { subtitle: "Takeaway with payment at pickup. Orders arrive here and move through the kitchen until handoff.", refresh: "Refresh", loading: "Loading orders…", empty: "There are no orders yet.", pending: "New", accepted: "Accepted", preparing: "Preparing", ready: "Ready", completed: "Completed", cancelled: "Cancelled", accept: "Accept", prepare: "Start preparing", complete: "Handed over", cancel: "Cancel", pickup: "Pickup", pay: "Pay at pickup", items: "items", today: "Orders today", open: "Open", readyCount: "Ready", revenue: "Completed value", customer: "Customer", order: "Order", source: "Source", previous: "Previous", next: "Next", page: "Page" },
+  es: { subtitle: "Takeaway con pago al recoger. Los pedidos llegan directamente aquí y avanzan por cocina hasta la entrega.", refresh: "Actualizar", loading: "Cargando pedidos…", empty: "Todavía no hay pedidos.", pending: "Nuevo", accepted: "Aceptado", preparing: "En preparación", ready: "Listo", completed: "Entregado", cancelled: "Cancelado", accept: "Aceptar", prepare: "Preparar", complete: "Entregado", cancel: "Cancelar", pickup: "Recogida", pay: "Pago al recoger", items: "artículos", today: "Pedidos hoy", open: "Abiertos", readyCount: "Listos", revenue: "Valor completado", customer: "Cliente", order: "Pedido", source: "Origen", previous: "Anterior", next: "Siguiente", page: "Página" },
 } as const satisfies Record<Locale, Record<string, string>>;
 
 async function readError(response: Response) { const body = (await response.json().catch(() => ({}))) as ErrorResponse; return body.message ?? `Request failed (${response.status})`; }
@@ -30,18 +34,25 @@ async function readError(response: Response) { const body = (await response.json
 export function OrdersBoard({ locale }: { locale: Locale }) {
   const c = copy[locale];
   const [orders, setOrders] = useState<Order[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [summary, setSummary] = useState<OrdersSummary>({ today: 0, open: 0, ready: 0, completedValueCents: 0, currency: "EUR" });
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }), [locale]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextOffset = 0) => {
     setLoading(true); setError(null);
     try {
-      const response = await fetch("/api/orders/v1/orders?limit=200", { credentials: "include", cache: "no-store" });
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(nextOffset) });
+      const response = await fetch(`/api/orders/v1/orders?${params.toString()}`, { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error(await readError(response));
       const body = (await response.json()) as OrdersResponse;
       setOrders(body.data);
+      setOffset(body.pagination.offset);
+      setHasMore(body.pagination.hasMore);
+      setSummary(body.summary);
     } catch (loadError) { setError(loadError instanceof Error ? loadError.message : "Unexpected error"); }
     finally { setLoading(false); }
   }, []);
@@ -64,6 +75,7 @@ export function OrdersBoard({ locale }: { locale: Locale }) {
         body: JSON.stringify({ status }),
       });
       if (!response.ok) throw new Error(await readError(response));
+      await load(offset);
     } catch (statusError) {
       setOrders((current) => current.map((order) => order.id === orderId ? previous : order));
       setError(statusError instanceof Error ? statusError.message : "Unexpected error");
@@ -72,18 +84,12 @@ export function OrdersBoard({ locale }: { locale: Locale }) {
     }
   }
 
-  const todayKey = new Date().toDateString();
-  const today = orders.filter((order) => new Date(order.createdAt).toDateString() === todayKey).length;
-  const open = orders.filter((order) => !["completed", "cancelled"].includes(order.status)).length;
-  const ready = orders.filter((order) => order.status === "ready").length;
-  const completedValue = orders.filter((order) => order.status === "completed").reduce((sum, order) => sum + order.totalCents, 0);
-  const currency = orders[0]?.currency ?? "EUR";
-  const money = useMemo(() => new Intl.NumberFormat(locale, { style: "currency", currency }), [currency, locale]);
+  const money = useMemo(() => new Intl.NumberFormat(locale, { style: "currency", currency: summary.currency }), [locale, summary.currency]);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-3xl text-sm leading-6 text-[var(--mandys-foreground-muted)]">{c.subtitle}</p><Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading}>{c.refresh}</Button></div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[{ label: c.today, value: String(today) }, { label: c.open, value: String(open) }, { label: c.readyCount, value: String(ready) }, { label: c.revenue, value: money.format(completedValue / 100) }].map((card) => <div key={card.label} className="rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4"><div className="text-2xl font-semibold">{card.value}</div><div className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{card.label}</div></div>)}</div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-3xl text-sm leading-6 text-[var(--mandys-foreground-muted)]">{c.subtitle}</p><Button variant="secondary" size="sm" onClick={() => void load(offset)} disabled={loading}>{c.refresh}</Button></div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[{ label: c.today, value: String(summary.today) }, { label: c.open, value: String(summary.open) }, { label: c.readyCount, value: String(summary.ready) }, { label: c.revenue, value: money.format(summary.completedValueCents / 100) }].map((card) => <div key={card.label} className="rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4"><div className="text-2xl font-semibold">{card.value}</div><div className="mt-1 text-xs text-[var(--mandys-foreground-muted)]">{card.label}</div></div>)}</div>
       {error ? <div className="rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4 text-sm text-[var(--mandys-foreground-muted)]">{error}</div> : null}
       {loading ? <div className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</div>
       : orders.length === 0 ? <div className="rounded-[var(--mandys-radius-lg)] border border-dashed border-[var(--mandys-border)] p-8 text-center text-sm text-[var(--mandys-foreground-muted)]">{c.empty}</div>
@@ -94,6 +100,11 @@ export function OrdersBoard({ locale }: { locale: Locale }) {
           {order.notes ? <p className="mt-4 rounded-md bg-[var(--mandys-surface-muted)] p-3 text-sm">{order.notes}</p> : null}
           <div className="mt-5 flex flex-wrap gap-2">{transitions[order.status].map((action) => <Button key={action.status} size="sm" variant={action.status === "cancelled" ? "secondary" : "primary"} disabled={busyId === order.id} onClick={() => void changeStatus(order.id, action.status)}>{c[action.key]}</Button>)}</div>
         </article>)}</div>}
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--mandys-border)] pt-4">
+        <Button type="button" size="sm" variant="secondary" disabled={loading || offset === 0} onClick={() => void load(Math.max(0, offset - PAGE_SIZE))}>{c.previous}</Button>
+        <span className="text-xs text-[var(--mandys-foreground-muted)]">{c.page} {Math.floor(offset / PAGE_SIZE) + 1}</span>
+        <Button type="button" size="sm" variant="secondary" disabled={loading || !hasMore} onClick={() => void load(offset + PAGE_SIZE)}>{c.next}</Button>
+      </div>
     </div>
   );
 }
