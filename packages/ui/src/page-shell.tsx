@@ -2,6 +2,9 @@ import type { HTMLAttributes, ReactNode } from "react";
 
 import { cn } from "./cn";
 
+export const pageBackLinkClassName =
+  "text-sm font-medium text-[var(--mandys-foreground-muted)] transition hover:text-[var(--mandys-foreground)]";
+
 export type PageShellProps = HTMLAttributes<HTMLElement> & {
   children: ReactNode;
 };
