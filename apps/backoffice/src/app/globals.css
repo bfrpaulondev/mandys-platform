@@ -1,12 +1,65 @@
 @import "tailwindcss";
 @import "@mandys/ui/styles.css";
-@source "../../../../packages/ui/src";
+
+html {
+  min-height: 100%;
+  background: var(--mandys-background);
+}
 
 body {
   min-height: 100vh;
-  font-family: Arial, Helvetica, sans-serif;
+  overflow-x: clip;
 }
 
-::selection {
-  background: color-mix(in srgb, var(--mandys-accent) 18%, transparent);
+:focus-visible {
+  outline: 3px solid var(--mandys-accent);
+  outline-offset: 3px;
+}
+
+.mandys-skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.mandys-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--mandys-foreground) 8%, transparent), transparent);
+  animation: mandys-skeleton 1.35s ease-in-out infinite;
+}
+
+.mandys-route-progress {
+  position: fixed;
+  inset: 0 100% auto 0;
+  z-index: 110;
+  height: 3px;
+  background: var(--mandys-accent);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.mandys-route-progress--active {
+  opacity: 1;
+  animation: mandys-route-progress 1.2s ease-out infinite;
+}
+
+@keyframes mandys-skeleton {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes mandys-route-progress {
+  0% { right: 96%; }
+  65% { right: 24%; }
+  100% { right: 8%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
