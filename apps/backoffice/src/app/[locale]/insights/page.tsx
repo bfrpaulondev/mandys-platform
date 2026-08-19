@@ -1,4 +1,5 @@
 import { isLocale } from "@mandys/i18n";
+import { PageHeader, PageShell, pageBackLinkClassName } from "@mandys/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -16,5 +17,14 @@ export default async function InsightsPage({ params }: { params: Promise<{ local
   if (!isLocale(rawLocale)) notFound();
   const locale = rawLocale;
   const c = copy[locale];
-  return <main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8"><header className="mb-8 border-b border-[var(--mandys-border)] pb-6"><Link href={`/${locale}`} className="text-sm font-medium text-[var(--mandys-foreground-muted)] hover:text-[var(--mandys-foreground)]">← {c.back}</Link><div className="mt-5"><p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mandys-accent)]">Mandy&apos;s Insights</p><h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">{c.title}</h1></div></header><InsightsBoard locale={locale} /></main>;
+  return (
+    <PageShell>
+      <PageHeader
+        back={<Link href={`/${locale}`} className={pageBackLinkClassName}>← {c.back}</Link>}
+        eyebrow="Mandy's Insights"
+        title={c.title}
+      />
+      <InsightsBoard locale={locale} />
+    </PageShell>
+  );
 }
