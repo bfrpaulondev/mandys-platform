@@ -1,0 +1,103 @@
+name: Cleanup stale branches once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cleanup-stale-branches-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: contains(github.event.head_commit.message, 'maintenance: run stale branch cleanup')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main with write credentials
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Delete audited stale branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r branch; do
+            [ -n "$branch" ] || continue
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              echo "Deleting $branch"
+              git push origin --delete "$branch"
+            else
+              echo "Already absent: $branch"
+            fi
+          done <<'BRANCHES'
+          agent/bootstrap-v0.1
+          agent/task-11-orders-pagination
+          assistant/final-test-readiness
+          assistant/stage-billing-webhook
+          assistant/stage-regional-media
+          assistant/stage-regional-media-v2
+          assistant/stage-role-matrix-guard
+          assistant/stage-runtime-health-monitor
+          assistant/stage-runtime-role-alignment
+          assistant/stage-transactional-outbox
+          automation/v01-isolation-readiness
+          autonomous/task-123-backlog-status
+          autonomous/task-123-security-scanning
+          chore/edge-function-ci
+          chore/netlify-preview
+          chore/runtime-e2e-v01-check
+          chore/supabase-bootstrap
+          docs/master-backlog-170
+          feat/audit-activity
+          feat/auth-schema-dashboard
+          feat/bootstrap-platform
+          feat/core-auth-onboarding
+          feat/core-auth-onboarding-2
+          feat/core-auth-onboarding-impl
+          feat/core-profile-branding
+          feat/core-team-management
+          feat/crm-customers
+          feat/events-core
+          feat/events-public-runtime
+          feat/in-app-notifications
+          feat/insights-dashboard
+          feat/live-backoffice-runtime
+          feat/live-dashboard
+          feat/live-storefront-page
+          feat/menu-core
+          feat/menu-crud-v2
+          feat/operations-settings-v01
+          feat/orders-takeaway
+          feat/public-storefront
+          feat/reservations-availability
+          feat/reservations-core
+          feat/reservations-policies-waitlist
+          feat/saas-plan-core
+          feat/stock-inventory
+          feat/stock-inventory-v2
+          fix/live-monitor-current-contracts
+          fix/netlify-backoffice-origin
+          fix/netlify-edge-path
+          fix/netlify-storefront-host
+          fix/perf-1-5-stability
+          fix/perf-qa-followup
+          fix/qa-perf-6-10-stability
+          fix/qa-perf-6-10-stock-entitlement
+          fix/storefront-live-defaults
+          perf/dashboard-direct-session
+          perf/sprint-1-5
+          perf/sprint-6-10
+          perf/task-11-pagination-foundation
+          qa/perf-1-5-live
+          qa/perf-6-10-live
+          qa/perf-6-10-live-rerun
+          qa/tasks-11-20-live
+          test/netlify-e2e-live
+          test/perf-e2e-block-service-worker
+          test/qa-stock-entitlement-contract
+          ui/task-21-consistency-shell
+          BRANCHES
+          echo "Remaining remote heads:"
+          git ls-remote --heads origin | sed 's#.*refs/heads/##' | sort
