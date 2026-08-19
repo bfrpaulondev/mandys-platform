@@ -10,9 +10,9 @@
 
 ## Progresso atual
 
-**11 / 170 concluídas (6,5%)**
+**21 / 170 concluídas (12,4%)**
 
-As tarefas **1–10 e 123** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. A tarefa 123 foi certificada com **CI = success** e **Security = success**, incluindo auditoria de dependências e varredura de segredos no histórico Git. As demais tarefas permanecem abertas até validação completa.
+As tarefas **1–20 e 123** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. As tarefas 11–20 foram certificadas com **CI = success**, **Security = success** e **Tasks 11-20 live QA = success** no PR QA-only #60, fechado sem merge. A tarefa 123 foi certificada com **CI = success** e **Security = success**, incluindo auditoria de dependências e varredura de segredos no histórico Git. As demais tarefas permanecem abertas até validação completa.
 
 ## 1–10 — Performance inicial
 
@@ -29,16 +29,16 @@ As tarefas **1–10 e 123** estão completamente concluídas. A certificação f
 
 ## 11–20 — Performance e UX base
 
-- [ ] **11.** Reduzir payloads e adicionar paginação
-- [ ] **12.** Reduzir cold starts
-- [ ] **13.** Skeleton/loading states
-- [ ] **14.** Transições de navegação
-- [ ] **15.** Empty states
-- [ ] **16.** Erros e retry UX
-- [ ] **17.** Sistema consistente de toasts
-- [ ] **18.** Backoffice mobile completo
-- [ ] **19.** Experiência tablet
-- [ ] **20.** Acessibilidade
+- [x] **11.** Reduzir payloads e adicionar paginação
+- [x] **12.** Reduzir cold starts
+- [x] **13.** Skeleton/loading states
+- [x] **14.** Transições de navegação
+- [x] **15.** Empty states
+- [x] **16.** Erros e retry UX
+- [x] **17.** Sistema consistente de toasts
+- [x] **18.** Backoffice mobile completo
+- [x] **19.** Experiência tablet
+- [x] **20.** Acessibilidade
 
 ## 21–30 — Conta, onboarding e configurações
 
