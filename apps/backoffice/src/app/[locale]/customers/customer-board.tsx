@@ -20,12 +20,15 @@ type Customer = {
 
 type Reservation = { id: string; startsAt: string; partySize: number; status: string; source: string };
 type CustomerDetail = Customer & { reservations: Reservation[] };
+type Pagination = { limit: number; offset: number; hasMore: boolean };
+
+const PAGE_SIZE = 25;
 
 const copy = {
-  "pt-PT": { search: "Pesquisar cliente", newCustomer: "Novo cliente", firstName: "Nome", lastName: "Apelido", email: "Email", phone: "Telefone", locale: "Idioma preferido", notes: "Notas", marketing: "Consentimento de marketing", save: "Guardar", saving: "A guardar…", create: "Criar cliente", loading: "A carregar clientes…", noCustomers: "Ainda não existem clientes.", select: "Selecione um cliente para ver o perfil.", history: "Histórico de reservas", noHistory: "Sem reservas associadas.", reservations: "reservas", lastVisit: "Última reserva", saved: "Cliente atualizado.", created: "Cliente criado.", genericError: "Não foi possível concluir a operação.", retry: "Atualizar", status: "Estado", party: "pessoas" },
-  "pt-BR": { search: "Pesquisar cliente", newCustomer: "Novo cliente", firstName: "Nome", lastName: "Sobrenome", email: "E-mail", phone: "Telefone", locale: "Idioma preferido", notes: "Notas", marketing: "Consentimento de marketing", save: "Salvar", saving: "Salvando…", create: "Criar cliente", loading: "Carregando clientes…", noCustomers: "Ainda não há clientes.", select: "Selecione um cliente para ver o perfil.", history: "Histórico de reservas", noHistory: "Sem reservas associadas.", reservations: "reservas", lastVisit: "Última reserva", saved: "Cliente atualizado.", created: "Cliente criado.", genericError: "Não foi possível concluir a operação.", retry: "Atualizar", status: "Status", party: "pessoas" },
-  en: { search: "Search customer", newCustomer: "New customer", firstName: "First name", lastName: "Last name", email: "Email", phone: "Phone", locale: "Preferred language", notes: "Notes", marketing: "Marketing consent", save: "Save", saving: "Saving…", create: "Create customer", loading: "Loading customers…", noCustomers: "There are no customers yet.", select: "Select a customer to view the profile.", history: "Reservation history", noHistory: "No linked reservations.", reservations: "reservations", lastVisit: "Last reservation", saved: "Customer updated.", created: "Customer created.", genericError: "The operation could not be completed.", retry: "Refresh", status: "Status", party: "guests" },
-  es: { search: "Buscar cliente", newCustomer: "Nuevo cliente", firstName: "Nombre", lastName: "Apellidos", email: "Email", phone: "Teléfono", locale: "Idioma preferido", notes: "Notas", marketing: "Consentimiento de marketing", save: "Guardar", saving: "Guardando…", create: "Crear cliente", loading: "Cargando clientes…", noCustomers: "Todavía no hay clientes.", select: "Selecciona un cliente para ver el perfil.", history: "Historial de reservas", noHistory: "Sin reservas asociadas.", reservations: "reservas", lastVisit: "Última reserva", saved: "Cliente actualizado.", created: "Cliente creado.", genericError: "No se pudo completar la operación.", retry: "Actualizar", status: "Estado", party: "personas" },
+  "pt-PT": { search: "Pesquisar cliente", newCustomer: "Novo cliente", firstName: "Nome", lastName: "Apelido", email: "Email", phone: "Telefone", locale: "Idioma preferido", notes: "Notas", marketing: "Consentimento de marketing", save: "Guardar", saving: "A guardar…", create: "Criar cliente", loading: "A carregar clientes…", noCustomers: "Ainda não existem clientes.", select: "Selecione um cliente para ver o perfil.", history: "Histórico de reservas", noHistory: "Sem reservas associadas.", reservations: "reservas", lastVisit: "Última reserva", saved: "Cliente atualizado.", created: "Cliente criado.", genericError: "Não foi possível concluir a operação.", retry: "Atualizar", status: "Estado", party: "pessoas", previous: "Anterior", next: "Seguinte", page: "Página" },
+  "pt-BR": { search: "Pesquisar cliente", newCustomer: "Novo cliente", firstName: "Nome", lastName: "Sobrenome", email: "E-mail", phone: "Telefone", locale: "Idioma preferido", notes: "Notas", marketing: "Consentimento de marketing", save: "Salvar", saving: "Salvando…", create: "Criar cliente", loading: "Carregando clientes…", noCustomers: "Ainda não há clientes.", select: "Selecione um cliente para ver o perfil.", history: "Histórico de reservas", noHistory: "Sem reservas associadas.", reservations: "reservas", lastVisit: "Última reserva", saved: "Cliente atualizado.", created: "Cliente criado.", genericError: "Não foi possível concluir a operação.", retry: "Atualizar", status: "Status", party: "pessoas", previous: "Anterior", next: "Próxima", page: "Página" },
+  en: { search: "Search customer", newCustomer: "New customer", firstName: "First name", lastName: "Last name", email: "Email", phone: "Phone", locale: "Preferred language", notes: "Notes", marketing: "Marketing consent", save: "Save", saving: "Saving…", create: "Create customer", loading: "Loading customers…", noCustomers: "There are no customers yet.", select: "Select a customer to view the profile.", history: "Reservation history", noHistory: "No linked reservations.", reservations: "reservations", lastVisit: "Last reservation", saved: "Customer updated.", created: "Customer created.", genericError: "The operation could not be completed.", retry: "Refresh", status: "Status", party: "guests", previous: "Previous", next: "Next", page: "Page" },
+  es: { search: "Buscar cliente", newCustomer: "Nuevo cliente", firstName: "Nombre", lastName: "Apellidos", email: "Email", phone: "Teléfono", locale: "Idioma preferido", notes: "Notas", marketing: "Consentimiento de marketing", save: "Guardar", saving: "Guardando…", create: "Crear cliente", loading: "Cargando clientes…", noCustomers: "Todavía no hay clientes.", select: "Selecciona un cliente para ver el perfil.", history: "Historial de reservas", noHistory: "Sin reservas asociadas.", reservations: "reservas", lastVisit: "Última reserva", saved: "Cliente actualizado.", created: "Cliente creado.", genericError: "No se pudo completar la operación.", retry: "Actualizar", status: "Estado", party: "personas", previous: "Anterior", next: "Siguiente", page: "Página" },
 } as const satisfies Record<Locale, Record<string, string>>;
 
 const field = "min-h-11 w-full rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] bg-transparent px-3 outline-none focus:ring-2 focus:ring-[var(--mandys-accent)]";
@@ -40,6 +43,9 @@ export function CustomerBoard({ locale }: { locale: Locale }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selected, setSelected] = useState<CustomerDetail | null>(null);
   const [query, setQuery] = useState("");
+  const [activeQuery, setActiveQuery] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,14 +53,19 @@ export function CustomerBoard({ locale }: { locale: Locale }) {
 
   const dateFormatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }), [locale]);
 
-  const loadCustomers = useCallback(async (search = "") => {
+  const loadCustomers = useCallback(async (search = "", nextOffset = 0) => {
     setLoading(true); setError(null);
     try {
-      const params = new URLSearchParams(); if (search.trim()) params.set("q", search.trim());
+      const normalizedSearch = search.trim();
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(nextOffset) });
+      if (normalizedSearch) params.set("q", normalizedSearch);
       const response = await fetch(`/api/crm/v1/customers?${params.toString()}`, { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error(await readMessage(response, c.genericError));
-      const body = (await response.json()) as { data: Customer[] };
+      const body = (await response.json()) as { data: Customer[]; pagination: Pagination };
       setCustomers(body.data);
+      setActiveQuery(normalizedSearch);
+      setOffset(body.pagination.offset);
+      setHasMore(body.pagination.hasMore);
     } catch (loadError) { setError(loadError instanceof Error ? loadError.message : c.genericError); }
     finally { setLoading(false); }
   }, [c.genericError]);
@@ -75,7 +86,7 @@ export function CustomerBoard({ locale }: { locale: Locale }) {
       const response = await fetch("/api/crm/v1/customers", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ firstName: String(formData.get("firstName") ?? ""), lastName: String(formData.get("lastName") ?? ""), email: String(formData.get("email") ?? ""), phone: String(formData.get("phone") ?? ""), preferredLocale: String(formData.get("preferredLocale") ?? locale), notes: String(formData.get("notes") ?? ""), marketingConsent: formData.get("marketingConsent") === "on" }) });
       if (!response.ok) throw new Error(await readMessage(response, c.genericError));
       const body = (await response.json()) as { data: CustomerDetail };
-      setSelected(body.data); setNotice(c.created); await loadCustomers(query);
+      setSelected(body.data); setNotice(c.created); await loadCustomers(activeQuery, offset);
     } catch (createError) { setError(createError instanceof Error ? createError.message : c.genericError); }
     finally { setSaving(false); }
   }
@@ -87,7 +98,7 @@ export function CustomerBoard({ locale }: { locale: Locale }) {
       const response = await fetch(`/api/crm/v1/customers/${selected.id}`, { method: "PUT", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ firstName: selected.firstName, lastName: selected.lastName ?? "", email: selected.email ?? "", phone: selected.phone ?? "", preferredLocale: selected.preferredLocale ?? locale, notes: selected.notes ?? "", marketingConsent: Boolean(selected.marketingConsentAt) }) });
       if (!response.ok) throw new Error(await readMessage(response, c.genericError));
       const body = (await response.json()) as { data: CustomerDetail };
-      setSelected(body.data); setNotice(c.saved); await loadCustomers(query);
+      setSelected(body.data); setNotice(c.saved); await loadCustomers(activeQuery, offset);
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : c.genericError); }
     finally { setSaving(false); }
   }
@@ -96,9 +107,14 @@ export function CustomerBoard({ locale }: { locale: Locale }) {
     <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
       <aside className="space-y-6">
         <section className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-4 shadow-[var(--mandys-shadow-sm)]">
-          <form onSubmit={(event) => { event.preventDefault(); void loadCustomers(query); }} className="flex gap-2"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={c.search} className={field} /><Button type="submit" variant="secondary">{c.search}</Button></form>
+          <form onSubmit={(event) => { event.preventDefault(); void loadCustomers(query, 0); }} className="flex gap-2"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={c.search} className={field} /><Button type="submit" variant="secondary">{c.search}</Button></form>
           <div className="mt-4 max-h-[520px] space-y-2 overflow-y-auto">
             {loading ? <p className="p-3 text-sm text-[var(--mandys-foreground-muted)]">{c.loading}</p> : customers.length === 0 ? <p className="p-3 text-sm text-[var(--mandys-foreground-muted)]">{c.noCustomers}</p> : customers.map((customer) => <button key={customer.id} type="button" onClick={() => void openCustomer(customer.id)} className={`w-full rounded-[var(--mandys-radius-sm)] border p-3 text-left transition ${selected?.id === customer.id ? "border-[var(--mandys-foreground)]" : "border-[var(--mandys-border)] hover:bg-[var(--mandys-surface-muted)]"}`}><p className="font-medium">{customer.firstName} {customer.lastName}</p><p className="mt-1 truncate text-xs text-[var(--mandys-foreground-muted)]">{customer.email || customer.phone || "—"}</p><p className="mt-2 text-xs text-[var(--mandys-foreground-muted)]">{customer.reservationCount ?? 0} {c.reservations}</p></button>)}
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-2 border-t border-[var(--mandys-border)] pt-4">
+            <Button type="button" size="sm" variant="secondary" disabled={loading || offset === 0} onClick={() => void loadCustomers(activeQuery, Math.max(0, offset - PAGE_SIZE))}>{c.previous}</Button>
+            <span className="text-xs text-[var(--mandys-foreground-muted)]">{c.page} {Math.floor(offset / PAGE_SIZE) + 1}</span>
+            <Button type="button" size="sm" variant="secondary" disabled={loading || !hasMore} onClick={() => void loadCustomers(activeQuery, offset + PAGE_SIZE)}>{c.next}</Button>
           </div>
         </section>
 
@@ -116,7 +132,7 @@ export function CustomerBoard({ locale }: { locale: Locale }) {
       </aside>
 
       <section className="min-w-0">
-        {error ? <div className="mb-4 rounded-[var(--mandys-radius-md)] border border-[var(--mandys-danger)]/30 p-4 text-sm text-[var(--mandys-danger)]">{error} <button type="button" onClick={() => void loadCustomers(query)} className="ml-2 underline">{c.retry}</button></div> : null}
+        {error ? <div className="mb-4 rounded-[var(--mandys-radius-md)] border border-[var(--mandys-danger)]/30 p-4 text-sm text-[var(--mandys-danger)]">{error} <button type="button" onClick={() => void loadCustomers(activeQuery, offset)} className="ml-2 underline">{c.retry}</button></div> : null}
         {notice ? <div className="mb-4 rounded-[var(--mandys-radius-md)] border border-[var(--mandys-border)] p-4 text-sm">{notice}</div> : null}
         {!selected ? <div className="rounded-[var(--mandys-radius-lg)] border border-dashed border-[var(--mandys-border)] p-12 text-center text-sm text-[var(--mandys-foreground-muted)]">{c.select}</div> : (
           <div className="space-y-6">
