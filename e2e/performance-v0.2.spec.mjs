@@ -160,6 +160,51 @@ test("performance sprint 6-10 is active on production", async ({ page }) => {
       await assertOperationalEdge(response, label, { allowModuleDisabled });
     }
 
+    for (let index = 1; index <= 3; index += 1) {
+      const customer = await retryRequest(`pagination customer ${index}`, () => page.request.post(
+        `${backofficeOrigin}/api/crm/v1/customers`,
+        {
+          headers: { accept: "application/json", "content-type": "application/json" },
+          data: {
+            firstName: `Pagination ${index}`,
+            lastName: "QA",
+            email: `pagination-${index}-${identity.restaurantSlug}@example.com`,
+            phone: "",
+            preferredLocale: "en",
+            notes: "",
+            marketingConsent: false,
+          },
+        },
+      ));
+      expect(customer.ok(), `pagination customer ${index} returned ${customer.status()}: ${await customer.text()}`).toBeTruthy();
+    }
+
+    const customerPageOne = await retryRequest("crm pagination first page", () => page.request.get(
+      `${backofficeOrigin}/api/crm/v1/customers?limit=2&offset=0`,
+      { headers: { accept: "application/json" } },
+    ));
+    await assertOperationalEdge(customerPageOne, "crm pagination first page");
+    const customerPageOneBody = await customerPageOne.json();
+    expect(customerPageOneBody?.data).toHaveLength(2);
+    expect(customerPageOneBody?.pagination).toEqual({ limit: 2, offset: 0, hasMore: true });
+
+    const customerPageTwo = await retryRequest("crm pagination second page", () => page.request.get(
+      `${backofficeOrigin}/api/crm/v1/customers?limit=2&offset=2`,
+      { headers: { accept: "application/json" } },
+    ));
+    await assertOperationalEdge(customerPageTwo, "crm pagination second page");
+    const customerPageTwoBody = await customerPageTwo.json();
+    expect(customerPageTwoBody?.data).toHaveLength(1);
+    expect(customerPageTwoBody?.pagination).toEqual({ limit: 2, offset: 2, hasMore: false });
+    expect(customerPageTwoBody.data[0]?.id).not.toBe(customerPageOneBody.data[0]?.id);
+    expect(customerPageTwoBody.data[0]?.id).not.toBe(customerPageOneBody.data[1]?.id);
+
+    const invalidPagination = await page.request.get(`${backofficeOrigin}/api/crm/v1/customers?limit=101&offset=0`, {
+      headers: { accept: "application/json" },
+    });
+    expect(invalidPagination.status()).toBe(400);
+    expect((await invalidPagination.json())?.error).toBe("INVALID_QUERY");
+
     const contextRequests = [];
     page.on("request", (request) => {
       const url = new URL(request.url());
@@ -173,6 +218,8 @@ test("performance sprint 6-10 is active on production", async ({ page }) => {
     await expect(page.getByRole("navigation", { name: "Mandy's" })).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => contextRequests.includes("/api/dashboard"), { timeout: 10_000 }).toBe(true);
     expect(contextRequests).not.toContain("/api/runtime/v1/core");
+    await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Previous", exact: true })).toBeDisabled();
 
     await page.goto(`${backofficeOrigin}/en`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.getByRole("navigation", { name: "Mandy's" })).toBeVisible({ timeout: 20_000 });
