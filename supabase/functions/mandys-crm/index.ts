@@ -129,13 +129,21 @@ function mapCustomer(row: any) {
 async function listCustomers(ctx: Context, url: URL): Promise<Result> {
   if (!canRead(ctx)) return fail(403, "FORBIDDEN", "Customer access is not allowed for this role");
   const q = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
+  const limitRaw = Number(url.searchParams.get("limit") ?? 25);
+  const offsetRaw = Number(url.searchParams.get("offset") ?? 0);
+  if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 100 || !Number.isInteger(offsetRaw) || offsetRaw < 0 || offsetRaw > 10000) {
+    return fail(400, "INVALID_QUERY", "Customer pagination is invalid");
+  }
+  const limit = limitRaw;
+  const offset = offsetRaw;
+  const rowLimit = limit + 1;
 
   return sql.begin(async (tx) => {
     await tx`select set_config('app.organization_id', ${ctx.organizationId}, true)`;
     const pattern = `%${q}%`;
     const rows = q
       ? await tx<any[]>`
-          select c.*,
+          select c.id,c.first_name,c.last_name,c.email,c.phone,c.preferred_locale,c.notes,c.marketing_consent_at,c.created_at,c.updated_at,
             count(r.id)::int as reservation_count,
             max(r.starts_at) as last_reservation_at
           from mandys.customers c
@@ -150,10 +158,10 @@ async function listCustomers(ctx: Context, url: URL): Promise<Result> {
             )
           group by c.id
           order by max(r.starts_at) desc nulls last, c.updated_at desc
-          limit 100
+          limit ${rowLimit} offset ${offset}
         `
       : await tx<any[]>`
-          select c.*,
+          select c.id,c.first_name,c.last_name,c.email,c.phone,c.preferred_locale,c.notes,c.marketing_consent_at,c.created_at,c.updated_at,
             count(r.id)::int as reservation_count,
             max(r.starts_at) as last_reservation_at
           from mandys.customers c
@@ -162,9 +170,15 @@ async function listCustomers(ctx: Context, url: URL): Promise<Result> {
           where c.organization_id = ${ctx.organizationId}
           group by c.id
           order by max(r.starts_at) desc nulls last, c.updated_at desc
-          limit 100
+          limit ${rowLimit} offset ${offset}
         `;
-    return { body: { data: rows.map(mapCustomer) } };
+    const hasMore = rows.length > limit;
+    return {
+      body: {
+        data: rows.slice(0, limit).map(mapCustomer),
+        pagination: { limit, offset, hasMore },
+      },
+    };
   });
 }
 
