@@ -1,0 +1,57 @@
+name: Task 21 live QA
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task-21-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify deployment smoke readiness
+        run: node scripts/verify-v0.1-deployments.mjs
+
+      - name: Verify critical Supabase runtimes
+        run: node scripts/verify-edge-runtime-health.mjs
+
+      - name: Prepare Playwright runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p playwright-runtime
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/authenticated-v0.1.spec.mjs e2e/billing-fail-closed.spec.mjs e2e/roles-v0.1.spec.mjs e2e/performance-v0.2.spec.mjs playwright-runtime/
+          cd playwright-runtime
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.62.1
+          npx playwright install chromium
+
+      - name: Run full live regression for task 21 certification
+        working-directory: playwright-runtime
+        run: npx playwright test live-v0.1.spec.mjs authenticated-v0.1.spec.mjs billing-fail-closed.spec.mjs roles-v0.1.spec.mjs performance-v0.2.spec.mjs --config=playwright.config.mjs
+
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: task-21-live-${{ github.run_id }}
+          path: |
+            playwright-runtime/playwright-report
+            playwright-runtime/test-results
+          if-no-files-found: ignore
+          retention-days: 7
