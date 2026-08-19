@@ -86,27 +86,59 @@ async function resolvePublic(hostname: string) {
 async function listOrders(ctx: Context, url: URL): Promise<Result> {
   if (!canRead(ctx)) return fail(403, "FORBIDDEN", "Your role cannot access orders");
   const status = url.searchParams.get("status");
-  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? 100)));
-  if (!Number.isInteger(limit) || (status && !Object.hasOwn(transitions, status))) return fail(400, "INVALID_QUERY", "Order filters are invalid");
+  const limitRaw = Number(url.searchParams.get("limit") ?? 25);
+  const offsetRaw = Number(url.searchParams.get("offset") ?? 0);
+  if (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 100 || !Number.isInteger(offsetRaw) || offsetRaw < 0 || offsetRaw > 10000 || (status && !Object.hasOwn(transitions, status))) {
+    return fail(400, "INVALID_QUERY", "Order filters or pagination are invalid");
+  }
+  const limit = limitRaw;
+  const offset = offsetRaw;
+  const rowLimit = limit + 1;
+
   return sql.begin(async (tx) => {
     await tx`select set_config('app.organization_id',${ctx.organizationId},true)`;
     await assertEnabled(tx, ctx.organizationId);
-    const orders = await tx<any[]>`
-      select id,order_number,status,fulfillment_type,payment_method,currency,subtotal_cents,total_cents,scheduled_for,guest_name,guest_email,guest_phone,notes,source,created_at,updated_at
-      from mandys.orders
-      where organization_id=${ctx.organizationId} and (${status}::text is null or status=${status})
-      order by case when status='pending' then 0 when status='accepted' then 1 when status='preparing' then 2 when status='ready' then 3 else 4 end,created_at asc
-      limit ${limit}
-    `;
+    const [orderRows, summaryRows] = await Promise.all([
+      tx<any[]>`
+        select id,order_number,status,fulfillment_type,payment_method,currency,subtotal_cents,total_cents,scheduled_for,guest_name,guest_email,guest_phone,notes,source,created_at,updated_at
+        from mandys.orders
+        where organization_id=${ctx.organizationId} and (${status}::text is null or status=${status})
+        order by case when status='pending' then 0 when status='accepted' then 1 when status='preparing' then 2 when status='ready' then 3 else 4 end,created_at asc
+        limit ${rowLimit} offset ${offset}
+      `,
+      tx<any[]>`
+        select
+          count(*) filter (where created_at >= date_trunc('day', now()))::int as today_count,
+          count(*) filter (where status not in ('completed','cancelled'))::int as open_count,
+          count(*) filter (where status='ready')::int as ready_count,
+          coalesce(sum(total_cents) filter (where status='completed'),0)::bigint as completed_value_cents,
+          coalesce(max(currency),'EUR') as currency
+        from mandys.orders
+        where organization_id=${ctx.organizationId}
+      `,
+    ]);
+    const hasMore = orderRows.length > limit;
+    const orders = orderRows.slice(0, limit);
     const ids = orders.map((row: any) => row.id);
     const items = ids.length > 0 ? await tx<any[]>`select id,order_id,menu_item_id,item_name,unit_price_cents,quantity,line_total_cents,notes from mandys.order_items where organization_id=${ctx.organizationId} and order_id in ${tx(ids)} order by created_at asc` : [];
-    return { body: { data: orders.map((row: any) => ({
-      id: row.id, orderNumber: row.order_number, status: row.status, fulfillmentType: row.fulfillment_type, paymentMethod: row.payment_method,
-      currency: row.currency, subtotalCents: row.subtotal_cents, totalCents: row.total_cents, scheduledFor: row.scheduled_for ? new Date(row.scheduled_for).toISOString() : null,
-      guestName: row.guest_name, guestEmail: row.guest_email, guestPhone: row.guest_phone, notes: row.notes, source: row.source,
-      createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString(),
-      items: items.filter((item: any) => item.order_id === row.id).map((item: any) => ({ id: item.id, menuItemId: item.menu_item_id, itemName: item.item_name, unitPriceCents: item.unit_price_cents, quantity: item.quantity, lineTotalCents: item.line_total_cents, notes: item.notes })),
-    })) } };
+    const summary = summaryRows[0] ?? {};
+    return { body: {
+      data: orders.map((row: any) => ({
+        id: row.id, orderNumber: row.order_number, status: row.status, fulfillmentType: row.fulfillment_type, paymentMethod: row.payment_method,
+        currency: row.currency, subtotalCents: row.subtotal_cents, totalCents: row.total_cents, scheduledFor: row.scheduled_for ? new Date(row.scheduled_for).toISOString() : null,
+        guestName: row.guest_name, guestEmail: row.guest_email, guestPhone: row.guest_phone, notes: row.notes, source: row.source,
+        createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString(),
+        items: items.filter((item: any) => item.order_id === row.id).map((item: any) => ({ id: item.id, menuItemId: item.menu_item_id, itemName: item.item_name, unitPriceCents: item.unit_price_cents, quantity: item.quantity, lineTotalCents: item.line_total_cents, notes: item.notes })),
+      })),
+      pagination: { limit, offset, hasMore },
+      summary: {
+        today: Number(summary.today_count ?? 0),
+        open: Number(summary.open_count ?? 0),
+        ready: Number(summary.ready_count ?? 0),
+        completedValueCents: Number(summary.completed_value_cents ?? 0),
+        currency: summary.currency ?? "EUR",
+      },
+    } };
   }).catch((error) => String(error).includes("ORDERS_DISABLED") ? fail(403, "ORDERS_DISABLED", "The orders module is not enabled") : Promise.reject(error));
 }
 
@@ -141,7 +173,7 @@ function parseItems(value: unknown): Array<{ menuItemId: string; quantity: numbe
   if (!Array.isArray(value) || value.length < 1 || value.length > 50) return null;
   const parsed = value.map((entry: any) => ({ menuItemId: entry?.menuItemId, quantity: Number(entry?.quantity), notes: entry?.notes ? text(entry.notes, 1, 500) : null }));
   if (parsed.some((item) => !isUuid(item.menuItemId) || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100 || (value.find((entry: any) => entry?.menuItemId === item.menuItemId)?.notes && !item.notes))) return null;
-  if (new Set(parsed.map((item) => item.menuItemId)).size !== parsed.length) return null;
+  if (new Set(parsed.map((item) => item.menuItemId).size !== parsed.length)) return null;
   return parsed;
 }
 
