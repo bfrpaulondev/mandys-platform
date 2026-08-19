@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   cleanup:
-    if: contains(github.event.head_commit.message, 'maintenance: run stale branch cleanup')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
