@@ -1,4 +1,5 @@
 import { isLocale } from "@mandys/i18n";
+import { PageHeader, PageShell, pageBackLinkClassName } from "@mandys/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -16,14 +17,14 @@ export default async function CustomersPage({ params }: { params: Promise<{ loca
   if (!isLocale(locale)) notFound();
   const c = copy[locale];
   return (
-    <main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
-      <header className="mb-8 border-b border-[var(--mandys-border)] pb-6">
-        <Link href={`/${locale}`} className="text-sm font-medium text-[var(--mandys-foreground-muted)] hover:text-[var(--mandys-foreground)]">← {c.back}</Link>
-        <p className="mb-2 mt-5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mandys-accent)]">{c.eyebrow}</p>
-        <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">{c.title}</h1>
-        <p className="mt-2 max-w-2xl text-sm text-[var(--mandys-foreground-muted)]">{c.subtitle}</p>
-      </header>
+    <PageShell>
+      <PageHeader
+        back={<Link href={`/${locale}`} className={pageBackLinkClassName}>← {c.back}</Link>}
+        eyebrow={c.eyebrow}
+        title={c.title}
+        subtitle={c.subtitle}
+      />
       <CustomerBoard locale={locale} />
-    </main>
+    </PageShell>
   );
 }

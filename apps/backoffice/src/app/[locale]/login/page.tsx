@@ -1,4 +1,5 @@
 import { isLocale, type Locale } from "@mandys/i18n";
+import { Surface } from "@mandys/ui";
 import { notFound } from "next/navigation";
 
 import { LoginForm } from "./login-form";
@@ -37,12 +38,12 @@ export default async function LoginPage({
 
   return (
     <main className="grid min-h-screen place-items-center px-4 py-12">
-      <section className="w-full max-w-md rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 shadow-[var(--mandys-shadow-sm)] sm:p-8">
+      <Surface as="section" padding="none" className="w-full max-w-md p-6 shadow-[var(--mandys-shadow-sm)] sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mandys-accent)]">{c.eyebrow}</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">{c.title}</h1>
         <p className="mt-3 text-sm leading-6 text-[var(--mandys-foreground-muted)]">{c.subtitle}</p>
         <LoginForm locale={rawLocale} />
-      </section>
+      </Surface>
     </main>
   );
 }
