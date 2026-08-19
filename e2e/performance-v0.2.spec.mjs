@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+// This file deliberately intercepts the Orders API to verify optimistic UI updates.
+// A production service worker can answer the request before Playwright routing sees it,
+// so block service workers only for this performance spec. PWA behavior remains covered
+// by the rest of the live suite with the default service-worker setting.
+test.use({ serviceWorkers: "block" });
+
 const backofficeOrigin =
   process.env.MANDYS_BACKOFFICE_ORIGIN ?? "https://mandyplataform.netlify.app";
 
