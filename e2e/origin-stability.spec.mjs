@@ -87,7 +87,7 @@ test("Backoffice protected runtime gateway rejects missing tenant context on the
   expectSameOrigin(response.url(), backofficeOrigin);
 
   const body = await response.json();
-  expect(["UNAUTHORIZED", "TENANT_CONTEXT_REQUIRED"]).toContain(body?.error);
+  expect(body?.error).toBe("UNAUTHENTICATED");
 });
 
 test("Backoffice dashboard gateway is served by the Netlify edge proxy and rejects unauthenticated access", async ({ request }) => {
@@ -140,7 +140,7 @@ for (const [viewportName, viewport] of responsiveViewports) {
 
     await page.getByRole("link", { name: "Reservar mesa", exact: true }).first().click();
     await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
-    expect(new URL(page.url()).hash).toBe("#reserve");
+    expect(new URL(page.url()).hash).toBe("#booking");
     await expectNoHorizontalOverflow(page);
   });
 }
@@ -157,7 +157,7 @@ for (const [locale, bookingCta] of reservationCtas) {
     await page.getByRole("link", { name: bookingCta, exact: true }).first().click();
     await expect(page.getByTestId("storefront-reservation-form")).toBeVisible();
     expectSameOrigin(page.url(), storefrontOrigin);
-    expect(new URL(page.url()).hash).toBe("#reserve");
+    expect(new URL(page.url()).hash).toBe("#booking");
   });
 }
 
