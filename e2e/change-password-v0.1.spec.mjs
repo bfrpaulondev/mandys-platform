@@ -112,8 +112,9 @@ test("authenticated user can change password without losing active restaurant co
 
     const signOut = await page.request.post(`${backofficeOrigin}/api/auth/sign-out`, {
       headers: { accept: "application/json", "content-type": "application/json" },
+      data: {},
     });
-    expect(signOut.ok()).toBeTruthy();
+    expect(signOut.ok(), `sign-out returned ${signOut.status()}: ${await signOut.text()}`).toBeTruthy();
 
     const oldPassword = await signInRequest(page, user.email, user.password);
     expect(oldPassword.ok(), "old password unexpectedly authenticated after password change").toBeFalsy();
