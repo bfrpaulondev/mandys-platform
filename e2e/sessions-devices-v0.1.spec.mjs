@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+// QA-only branch touch to trigger the focused Task 26 production certification workflow.
 const backofficeOrigin =
   process.env.MANDYS_BACKOFFICE_ORIGIN ?? "https://mandyplataform.netlify.app";
 
