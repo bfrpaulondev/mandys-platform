@@ -17,6 +17,7 @@ const copy = {
     saving: "A alterar…",
     saved: "Password alterada com sucesso.",
     changeError: "Não foi possível alterar a password. Confirme a password atual e tente novamente.",
+    contextReadError: "Não foi possível confirmar o restaurante ativo. Atualize a página e tente novamente.",
     contextError: "A password foi alterada, mas não foi possível restaurar o restaurante ativo. Atualize a página antes de continuar.",
     currentRequired: "Indique a password atual.",
     length: "A nova password deve ter entre 8 e 128 caracteres.",
@@ -33,6 +34,7 @@ const copy = {
     saving: "Alterando…",
     saved: "Senha alterada com sucesso.",
     changeError: "Não foi possível alterar a senha. Confirme a senha atual e tente novamente.",
+    contextReadError: "Não foi possível confirmar o restaurante ativo. Atualize a página e tente novamente.",
     contextError: "A senha foi alterada, mas não foi possível restaurar o restaurante ativo. Atualize a página antes de continuar.",
     currentRequired: "Informe a senha atual.",
     length: "A nova senha deve ter entre 8 e 128 caracteres.",
@@ -49,6 +51,7 @@ const copy = {
     saving: "Changing…",
     saved: "Password changed successfully.",
     changeError: "We couldn't change the password. Check your current password and try again.",
+    contextReadError: "We couldn't confirm the active restaurant. Refresh the page and try again.",
     contextError: "Your password changed, but the active restaurant could not be restored. Refresh the page before continuing.",
     currentRequired: "Enter your current password.",
     length: "The new password must be between 8 and 128 characters.",
@@ -65,6 +68,7 @@ const copy = {
     saving: "Cambiando…",
     saved: "Contraseña cambiada correctamente.",
     changeError: "No se pudo cambiar la contraseña. Comprueba la contraseña actual e inténtalo de nuevo.",
+    contextReadError: "No se pudo confirmar el restaurante activo. Actualiza la página e inténtalo de nuevo.",
     contextError: "La contraseña cambió, pero no se pudo restaurar el restaurante activo. Actualiza la página antes de continuar.",
     currentRequired: "Indica la contraseña actual.",
     length: "La nueva contraseña debe tener entre 8 y 128 caracteres.",
@@ -86,7 +90,6 @@ function validationMessage(locale: SupportedLocale, code: PasswordValidationCode
 export function PasswordChange({ locale }: { locale: SupportedLocale }) {
   const c = copy[locale];
   const toast = useToast();
-  const activeOrganization = authClient.useActiveOrganization();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -100,10 +103,16 @@ export function PasswordChange({ locale }: { locale: SupportedLocale }) {
       return;
     }
 
-    const activeOrganizationId = activeOrganization.data?.id ?? null;
     setError(null);
     setSaving(true);
     try {
+      const organizationResult = await authClient.organization.getFullOrganization();
+      const activeOrganizationId = organizationResult.data?.id ?? null;
+      if (organizationResult.error || !activeOrganizationId) {
+        toast.error(c.contextReadError);
+        return;
+      }
+
       const result = await authClient.changePassword({
         currentPassword,
         newPassword,
@@ -118,14 +127,12 @@ export function PasswordChange({ locale }: { locale: SupportedLocale }) {
       setNewPassword("");
       setConfirmPassword("");
 
-      if (activeOrganizationId) {
-        const restored = await authClient.organization.setActive({
-          organizationId: activeOrganizationId,
-        });
-        if (restored.error) {
-          toast.error(c.contextError);
-          return;
-        }
+      const restored = await authClient.organization.setActive({
+        organizationId: activeOrganizationId,
+      });
+      if (restored.error) {
+        toast.error(c.contextError);
+        return;
       }
 
       toast.success(c.saved);
