@@ -9,6 +9,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import postgres from "postgres";
 
+import { deliverEmailVerification } from "./email-verification-email.ts";
 import { deliverPasswordResetEmail } from "./password-reset-email.ts";
 
 const databaseUrl = Deno.env.get("SUPABASE_DB_URL");
@@ -184,6 +185,13 @@ const auth = betterAuth({
     member: authMember,
     invitation: authInvitation,
   } }),
+  emailVerification: {
+    expiresIn: 3600,
+    sendOnSignUp: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      await deliverEmailVerification({ email: user.email, url });
+    },
+  },
   emailAndPassword: {
     enabled: true,
     revokeSessionsOnPasswordReset: true,
