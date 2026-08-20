@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import postgres from "postgres";
 
-import { queuePasswordResetEmail } from "./password-reset-email.ts";
+import { deliverPasswordResetEmail } from "./password-reset-email.ts";
 
 const databaseUrl = Deno.env.get("SUPABASE_DB_URL");
 if (!databaseUrl) throw new Error("SUPABASE_DB_URL is required");
@@ -189,7 +189,7 @@ const auth = betterAuth({
     revokeSessionsOnPasswordReset: true,
     resetPasswordTokenExpiresIn: 3600,
     sendResetPassword: async ({ user, url }) => {
-      queuePasswordResetEmail({ email: user.email, url });
+      await deliverPasswordResetEmail({ email: user.email, url });
     },
   },
   user: {
