@@ -65,3 +65,5 @@ jobs:
             playwright-runtime/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+# QA-only trigger branch: this comment intentionally creates a synchronize event for Task 26 certification.
