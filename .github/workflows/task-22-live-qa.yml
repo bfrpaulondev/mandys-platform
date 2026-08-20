@@ -1,0 +1,73 @@
+name: Task 22 Live QA
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task-22-live-qa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  live-task-22:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout QA branch
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Wait for production readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            echo "Production readiness attempt ${attempt}/12"
+            if node scripts/verify-v0.1-deployments.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              exit 1
+            fi
+            sleep 30
+          done
+      - name: Prepare focused Playwright runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p playwright-runtime
+          cp e2e/playwright.config.mjs e2e/account-profile-v0.1.spec.mjs playwright-runtime/
+          cd playwright-runtime
+          npm init -y >/dev/null
+          npm install --save-exact @playwright/test@1.62.1
+          npx playwright install --with-deps chromium
+      - name: Run task 22 production E2E
+        working-directory: playwright-runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..6}; do
+            echo "Task 22 live E2E attempt ${attempt}/6"
+            if npx playwright test account-profile-v0.1.spec.mjs --config=playwright.config.mjs; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 6 ]; then
+              exit 1
+            fi
+            sleep 30
+          done
+      - name: Upload focused browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: task-22-live-qa-${{ github.run_id }}
+          path: |
+            playwright-runtime/playwright-report
+            playwright-runtime/test-results
+          if-no-files-found: ignore
+          retention-days: 7
