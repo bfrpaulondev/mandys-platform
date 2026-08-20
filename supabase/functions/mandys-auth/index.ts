@@ -231,7 +231,6 @@ const auth = betterAuth({
     membershipLimit: 100,
     disableOrganizationDeletion: true,
     invitationExpiresIn: 60 * 60 * 48,
-    requireEmailVerificationOnInvitation: true,
     sendInvitationEmail: async (data) => {
       await deliverOrganizationInvitation({
         invitationId: data.id,
