@@ -50,6 +50,9 @@ export type StorefrontMenu = {
 };
 
 export type StorefrontData = {
+  // Kept for page compatibility while legacy demo rendering is removed. A
+  // successful runtime response is always live DB-backed data.
+  isDemo: false;
   locale: Locale;
   defaultLocale: Locale;
   enabledLocales: Locale[];
@@ -88,7 +91,7 @@ export type StorefrontData = {
   menus: StorefrontMenu[];
 };
 
-type StorefrontResponse = { data: StorefrontData };
+type StorefrontResponse = { data: Omit<StorefrontData, "isDemo"> };
 
 export function classifyStorefrontResponseStatus(status: number): "ok" | "not-found" | "unavailable" {
   if (status >= 200 && status < 300) return "ok";
@@ -119,7 +122,7 @@ const loadStorefrontForTenant = cache(async (hostname: string, locale: Locale): 
   if (!body?.data?.restaurant?.publicName || !body.data.location || !Array.isArray(body.data.menus)) {
     throw new StorefrontUnavailableError();
   }
-  return body.data;
+  return { ...body.data, isDemo: false };
 });
 
 export async function getStorefrontData(locale: Locale): Promise<StorefrontData> {
