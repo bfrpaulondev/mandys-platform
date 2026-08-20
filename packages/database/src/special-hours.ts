@@ -48,11 +48,12 @@ export function reservationFitsOpeningWindow(
   if (window.isClosed || !window.opensAt || !window.closesAt) return false;
   const opens = timeToMinutes(window.opensAt);
   const closesRaw = timeToMinutes(window.closesAt);
-  if (opens === null || closesRaw === null || startMinutes < 0 || endMinutes <= startMinutes) return false;
+  if (opens === null || closesRaw === null || startMinutes < 0 || endMinutes < 0) return false;
 
-  const closes = closesRaw <= opens ? closesRaw + 24 * 60 : closesRaw;
-  const normalizedStart = startMinutes < opens && closes > 24 * 60 ? startMinutes + 24 * 60 : startMinutes;
-  const normalizedEnd = endMinutes <= normalizedStart && closes > 24 * 60 ? endMinutes + 24 * 60 : endMinutes;
+  const overnight = closesRaw <= opens;
+  const closes = overnight ? closesRaw + 24 * 60 : closesRaw;
+  const normalizedStart = overnight && startMinutes < opens ? startMinutes + 24 * 60 : startMinutes;
+  const normalizedEnd = overnight && endMinutes <= normalizedStart ? endMinutes + 24 * 60 : endMinutes;
   return normalizedStart >= opens && normalizedEnd > normalizedStart && normalizedEnd <= closes;
 }
 
