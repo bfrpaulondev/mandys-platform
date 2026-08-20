@@ -10,9 +10,9 @@
 
 ## Progresso atual
 
-**25 / 170 concluídas (14,7%)**
+**26 / 170 concluídas (15,3%)**
 
-As tarefas **1–24 e 123** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. As tarefas 11–20 foram certificadas com **CI = success**, **Security = success** e **Tasks 11-20 live QA = success** no PR QA-only #60, fechado sem merge. A tarefa 21 foi certificada após a integração do PR #61, com **CI = success**, **Security = success** e **Task 21 live QA = success** no PR QA-only #62, fechado sem merge. A tarefa 22 foi certificada após a integração do PR #64, com **CI = success**, **Security = success**, previews Netlify verdes e **Task 22 Live QA = success** no PR QA-only #65, fechado sem merge. A tarefa 23 foi certificada após a integração do PR #67 e do ajuste de teste do PR #71, com **CI = success**, **Security = success**, previews Netlify aplicáveis verdes e **Task 23 Live QA = success** no PR QA-only #68, fechado sem merge. A tarefa 24 foi certificada após a integração do PR #74 e do ajuste da rota pública no PR #76, com **CI = success**, **Security = success**, previews Netlify aplicáveis verdes e **Task 24 Live QA = success** no PR QA-only #75, fechado sem merge. A tarefa 123 foi certificada com **CI = success** e **Security = success**, incluindo auditoria de dependências e varredura de segredos no histórico Git. As demais tarefas permanecem abertas até validação completa.
+As tarefas **1–25 e 123** estão completamente concluídas. A certificação final do sprint 6–10 terminou com **CI = success** e **Performance 6–10 live QA = success**. As tarefas 11–20 foram certificadas com **CI = success**, **Security = success** e **Tasks 11-20 live QA = success** no PR QA-only #60, fechado sem merge. A tarefa 21 foi certificada após a integração do PR #61, com **CI = success**, **Security = success** e **Task 21 live QA = success** no PR QA-only #62, fechado sem merge. A tarefa 22 foi certificada após a integração do PR #64, com **CI = success**, **Security = success**, previews Netlify verdes e **Task 22 Live QA = success** no PR QA-only #65, fechado sem merge. A tarefa 23 foi certificada após a integração do PR #67 e do ajuste de teste do PR #71, com **CI = success**, **Security = success**, previews Netlify aplicáveis verdes e **Task 23 Live QA = success** no PR QA-only #68, fechado sem merge. A tarefa 24 foi certificada após a integração do PR #74 e do ajuste da rota pública no PR #76, com **CI = success**, **Security = success**, previews Netlify aplicáveis verdes e **Task 24 Live QA = success** no PR QA-only #75, fechado sem merge. A tarefa 25 foi certificada após a integração do PR #78 e a sincronização da Edge Function `mandys-auth` em produção, com **CI = success**, **Security = success** e **Task 25 Live QA = success** no PR QA-only #79, fechado sem merge. A tarefa 123 foi certificada com **CI = success** e **Security = success**, incluindo auditoria de dependências e varredura de segredos no histórico Git. As demais tarefas permanecem abertas até validação completa.
 
 ## 1–10 — Performance inicial
 
@@ -46,7 +46,7 @@ As tarefas **1–24 e 123** estão completamente concluídas. A certificação f
 - [x] **22.** Perfil do utilizador
 - [x] **23.** Alteração de password
 - [x] **24.** Recuperação/reset de password
-- [ ] **25.** Verificação de email
+- [x] **25.** Verificação de email
 - [ ] **26.** Sessões/dispositivos
 - [ ] **27.** Checklist de onboarding
 - [ ] **28.** Onboarding retomável
