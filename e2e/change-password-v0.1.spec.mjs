@@ -46,7 +46,7 @@ async function deleteUser(page, password) {
   });
 }
 
-test("authenticated user can change password and the old password stops authenticating", async ({ page }) => {
+test("authenticated user can change password without losing active restaurant context", async ({ page }) => {
   test.setTimeout(180_000);
   const user = identity();
   let userCreated = false;
@@ -100,6 +100,11 @@ test("authenticated user can change password and the old password stops authenti
     await page.getByRole("button", { name: "Change password", exact: true }).click();
     await expect(page.getByText("Password changed successfully.", { exact: true })).toBeVisible({ timeout: 15_000 });
     currentPassword = user.nextPassword;
+
+    const dashboard = await page.request.get(`${backofficeOrigin}/api/dashboard`, {
+      headers: { accept: "application/json" },
+    });
+    expect(dashboard.ok(), `active restaurant context was lost after password change: ${dashboard.status()} ${await dashboard.text()}`).toBeTruthy();
 
     const tenantDelete = await deleteTenant(page);
     expect(tenantDelete.ok(), `tenant cleanup returned ${tenantDelete.status()}: ${await tenantDelete.text()}`).toBeTruthy();
