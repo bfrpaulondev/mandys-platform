@@ -10,6 +10,7 @@ import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-o
 import postgres from "postgres";
 
 import { deliverEmailVerification } from "./email-verification-email.ts";
+import { deliverOrganizationInvitation } from "./organization-invitation-email.ts";
 import { deliverPasswordResetEmail } from "./password-reset-email.ts";
 
 const databaseUrl = Deno.env.get("SUPABASE_DB_URL");
@@ -229,6 +230,18 @@ const auth = betterAuth({
     organizationLimit: 10,
     membershipLimit: 100,
     disableOrganizationDeletion: true,
+    invitationExpiresIn: 60 * 60 * 48,
+    requireEmailVerificationOnInvitation: true,
+    sendInvitationEmail: async (data) => {
+      await deliverOrganizationInvitation({
+        invitationId: data.id,
+        email: data.email,
+        organizationName: data.organization.name,
+        inviterName: data.inviter.user.name,
+        inviterEmail: data.inviter.user.email,
+        role: data.role,
+      });
+    },
   })],
   advanced: {
     cookiePrefix: "mandys",
