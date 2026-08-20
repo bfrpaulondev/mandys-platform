@@ -1,5 +1,6 @@
 import type { Locale } from "@mandys/i18n";
 import { headers } from "next/headers";
+import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import {
@@ -9,13 +10,6 @@ import {
 } from "./public-api";
 
 export const STOREFRONT_REVALIDATE_SECONDS = 30;
-
-export class StorefrontNotFoundError extends Error {
-  constructor() {
-    super("Restaurant storefront was not found");
-    this.name = "StorefrontNotFoundError";
-  }
-}
 
 export class StorefrontUnavailableError extends Error {
   constructor(status?: number) {
@@ -115,7 +109,7 @@ const loadStorefrontForTenant = cache(async (hostname: string, locale: Locale): 
   }
 
   const classification = classifyStorefrontResponseStatus(response.status);
-  if (classification === "not-found") throw new StorefrontNotFoundError();
+  if (classification === "not-found") notFound();
   if (classification === "unavailable") throw new StorefrontUnavailableError(response.status);
 
   const body = (await response.json().catch(() => null)) as StorefrontResponse | null;
@@ -130,6 +124,6 @@ export async function getStorefrontData(locale: Locale): Promise<StorefrontData>
   const forwardedHost = normalizeStorefrontHost(requestHeaders.get("x-forwarded-host"));
   const host = forwardedHost ?? normalizeStorefrontHost(requestHeaders.get("host"));
   const hostname = resolveStorefrontHostname(host);
-  if (!hostname) throw new StorefrontNotFoundError();
+  if (!hostname) notFound();
   return loadStorefrontForTenant(hostname, locale);
 }
