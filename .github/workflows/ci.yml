@@ -94,14 +94,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p playwright-runtime
-          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/authenticated-v0.1.spec.mjs e2e/account-profile-v0.1.spec.mjs e2e/change-password-v0.1.spec.mjs e2e/password-recovery-v0.1.spec.mjs e2e/email-verification-v0.1.spec.mjs e2e/sessions-devices-v0.1.spec.mjs e2e/notifications-center-v0.1.spec.mjs e2e/data-protection-v0.1.spec.mjs e2e/billing-fail-closed.spec.mjs e2e/roles-v0.1.spec.mjs e2e/performance-v0.2.spec.mjs playwright-runtime/
+          cp e2e/playwright.config.mjs e2e/live-v0.1.spec.mjs e2e/authenticated-v0.1.spec.mjs e2e/account-profile-v0.1.spec.mjs e2e/change-password-v0.1.spec.mjs e2e/password-recovery-v0.1.spec.mjs e2e/email-verification-v0.1.spec.mjs e2e/sessions-devices-v0.1.spec.mjs e2e/notifications-center-v0.1.spec.mjs e2e/data-protection-v0.1.spec.mjs e2e/areas-tables-v0.1.spec.mjs e2e/billing-fail-closed.spec.mjs e2e/roles-v0.1.spec.mjs e2e/performance-v0.2.spec.mjs playwright-runtime/
           cd playwright-runtime
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.62.1
           npx playwright install --with-deps chromium
       - name: Run live browser E2E
         working-directory: playwright-runtime
-        run: npx playwright test live-v0.1.spec.mjs authenticated-v0.1.spec.mjs account-profile-v0.1.spec.mjs change-password-v0.1.spec.mjs password-recovery-v0.1.spec.mjs email-verification-v0.1.spec.mjs sessions-devices-v0.1.spec.mjs notifications-center-v0.1.spec.mjs data-protection-v0.1.spec.mjs billing-fail-closed.spec.mjs roles-v0.1.spec.mjs performance-v0.2.spec.mjs --config=playwright.config.mjs
+        run: npx playwright test live-v0.1.spec.mjs authenticated-v0.1.spec.mjs account-profile-v0.1.spec.mjs change-password-v0.1.spec.mjs password-recovery-v0.1.spec.mjs email-verification-v0.1.spec.mjs sessions-devices-v0.1.spec.mjs notifications-center-v0.1.spec.mjs data-protection-v0.1.spec.mjs areas-tables-v0.1.spec.mjs billing-fail-closed.spec.mjs roles-v0.1.spec.mjs performance-v0.2.spec.mjs --config=playwright.config.mjs
       - name: Upload browser test artifacts
         if: always()
         uses: actions/upload-artifact@v7
