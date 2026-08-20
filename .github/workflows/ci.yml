@@ -24,7 +24,7 @@ jobs:
         with:
           run_install: false
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Install dependencies
@@ -56,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Verify current Netlify targets
@@ -86,7 +86,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
       - name: Prepare Playwright runtime
