@@ -31,6 +31,7 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
   if (session.isPending) return <LoadingState label={c.loading} rows={3} />;
   if (session.error || !user) return <ErrorState title={c.loadError} description={c.loadError} retryLabel={c.retry} onRetry={() => void session.refetch()} />;
 
+  const accountUser = user;
   const normalizedName = normalizeProfileName(name);
   const unchanged = normalizedName === normalizedInitialName;
 
@@ -48,11 +49,11 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
   }
 
   async function sendVerification() {
-    if (user.emailVerified || sendingVerification) return;
+    if (accountUser.emailVerified || sendingVerification) return;
     setSendingVerification(true);
     try {
       const result = await authClient.sendVerificationEmail({
-        email: user.email,
+        email: accountUser.email,
         callbackURL: `${window.location.origin}/${locale}/account`,
       });
       if (result.error) { toast.error(c.verificationError); return; }
@@ -65,12 +66,12 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
   return (
     <Surface className="max-w-2xl p-5 sm:p-6">
       <div className="mb-6 flex items-center gap-4">
-        {user.image ? (
-          <img src={user.image} alt={c.avatarAlt} className="h-16 w-16 rounded-full border border-[var(--mandys-border)] object-cover" />
+        {accountUser.image ? (
+          <img src={accountUser.image} alt={c.avatarAlt} className="h-16 w-16 rounded-full border border-[var(--mandys-border)] object-cover" />
         ) : (
           <div aria-hidden="true" className="grid h-16 w-16 place-items-center rounded-full bg-[var(--mandys-surface-muted)] text-lg font-semibold">{initials}</div>
         )}
-        <div className="min-w-0"><p className="truncate font-semibold">{normalizedInitialName}</p><p className="truncate text-sm text-[var(--mandys-foreground-muted)]">{user.email}</p></div>
+        <div className="min-w-0"><p className="truncate font-semibold">{normalizedInitialName}</p><p className="truncate text-sm text-[var(--mandys-foreground-muted)]">{accountUser.email}</p></div>
       </div>
 
       <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void saveProfile(); }}>
@@ -82,9 +83,9 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
 
         <div>
           <label htmlFor="account-email" className="mb-1.5 block text-sm font-medium">{c.email}</label>
-          <input id="account-email" value={user.email} readOnly aria-readonly="true" className="min-h-11 w-full rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] bg-[var(--mandys-surface-muted)] px-3 py-2 text-sm text-[var(--mandys-foreground-muted)]" />
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--mandys-foreground-muted)]"><span className="rounded-full border border-[var(--mandys-border)] px-2 py-1">{user.emailVerified ? c.verified : c.unverified}</span><span>{c.emailHint}</span></div>
-          {!user.emailVerified ? <div className="mt-3"><Button type="button" variant="secondary" disabled={sendingVerification} aria-busy={sendingVerification} onClick={() => void sendVerification()}>{sendingVerification ? c.verifying : c.verify}</Button></div> : null}
+          <input id="account-email" value={accountUser.email} readOnly aria-readonly="true" className="min-h-11 w-full rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] bg-[var(--mandys-surface-muted)] px-3 py-2 text-sm text-[var(--mandys-foreground-muted)]" />
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--mandys-foreground-muted)]"><span className="rounded-full border border-[var(--mandys-border)] px-2 py-1">{accountUser.emailVerified ? c.verified : c.unverified}</span><span>{c.emailHint}</span></div>
+          {!accountUser.emailVerified ? <div className="mt-3"><Button type="button" variant="secondary" disabled={sendingVerification} aria-busy={sendingVerification} onClick={() => void sendVerification()}>{sendingVerification ? c.verifying : c.verify}</Button></div> : null}
         </div>
 
         <div className="flex justify-end"><Button type="submit" disabled={saving || unchanged} aria-busy={saving}>{saving ? c.saving : c.save}</Button></div>
