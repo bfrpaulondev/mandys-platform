@@ -3,6 +3,44 @@ import { z } from "zod";
 export const locales = ["pt-PT", "pt-BR", "en", "es"] as const;
 export type Locale = (typeof locales)[number];
 
+const isoCountryCodes = new Set([
+  "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ",
+  "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ", "BR", "BS", "BT", "BV", "BW", "BY", "BZ",
+  "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN", "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ",
+  "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE", "EG", "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR",
+  "GA", "GB", "GD", "GE", "GF", "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY",
+  "HK", "HM", "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT",
+  "JE", "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ",
+  "LA", "LB", "LC", "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MF", "MG", "MH", "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ",
+  "NA", "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG", "PH", "PK", "PL", "PM", "PN", "PR", "PS", "PT", "PW", "PY",
+  "QA", "RE", "RO", "RS", "RU", "RW", "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS", "ST", "SV", "SX", "SY", "SZ",
+  "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL", "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ",
+  "VA", "VC", "VE", "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW",
+]);
+
+export function isSupportedCountryCode(value: string): boolean {
+  return isoCountryCodes.has(value.trim().toUpperCase());
+}
+
+export function isSupportedCurrencyCode(value: string): boolean {
+  const currency = value.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) return false;
+  const intl = Intl as typeof Intl & { supportedValuesOf?: (key: string) => string[] };
+  if (typeof intl.supportedValuesOf !== "function") return true;
+  return intl.supportedValuesOf("currency").includes(currency);
+}
+
+export function isValidIanaTimezone(value: string): boolean {
+  const timezone = value.trim();
+  if (!timezone || timezone.length > 80) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const tenantRoles = [
   "owner",
   "manager",
@@ -38,28 +76,59 @@ export const tenantContextSchema = z.object({
 });
 export type TenantContext = z.infer<typeof tenantContextSchema>;
 
-export const restaurantOnboardingSchema = z.object({
-  publicName: z.string().trim().min(2).max(160),
-  legalName: z.string().trim().max(200).optional(),
-  locationName: z.string().trim().min(2).max(160),
-  slug: z
-    .string()
-    .trim()
-    .min(2)
-    .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  email: z.string().email().optional(),
-  phone: z.string().trim().max(40).optional(),
-  addressLine1: z.string().trim().max(200).optional(),
-  addressLine2: z.string().trim().max(200).optional(),
-  postalCode: z.string().trim().max(24).optional(),
-  city: z.string().trim().max(120).optional(),
-  countryCode: z.string().trim().length(2).default("PT"),
-  timezone: z.string().trim().min(1).max(80).default("Europe/Lisbon"),
-  currency: z.string().trim().length(3).default("EUR"),
-  defaultLocale: z.enum(locales).default("pt-PT"),
-  enabledLocales: z.array(z.enum(locales)).min(1).max(locales.length).default(["pt-PT", "en", "es"]),
-});
+export const restaurantOnboardingSchema = z
+  .object({
+    publicName: z.string().trim().min(2).max(160),
+    legalName: z.string().trim().max(200).optional(),
+    locationName: z.string().trim().min(2).max(160),
+    slug: z
+      .string()
+      .trim()
+      .min(2)
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    email: z.string().trim().email().optional(),
+    phone: z.string().trim().max(40).optional(),
+    addressLine1: z.string().trim().max(200).optional(),
+    addressLine2: z.string().trim().max(200).optional(),
+    postalCode: z.string().trim().max(24).optional(),
+    city: z.string().trim().max(120).optional(),
+    countryCode: z
+      .string()
+      .trim()
+      .transform((value) => value.toUpperCase())
+      .refine(isSupportedCountryCode, { message: "countryCode must be a valid ISO 3166-1 alpha-2 code" })
+      .default("PT"),
+    timezone: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .refine(isValidIanaTimezone, { message: "timezone must be a valid IANA timezone" })
+      .default("Europe/Lisbon"),
+    currency: z
+      .string()
+      .trim()
+      .transform((value) => value.toUpperCase())
+      .refine(isSupportedCurrencyCode, { message: "currency must be a supported ISO 4217 code" })
+      .default("EUR"),
+    defaultLocale: z.enum(locales).default("pt-PT"),
+    enabledLocales: z
+      .array(z.enum(locales))
+      .min(1)
+      .max(locales.length)
+      .refine((value) => new Set(value).size === value.length, { message: "enabledLocales must contain unique locales" })
+      .default(["pt-PT", "en", "es"]),
+  })
+  .superRefine((value, context) => {
+    if (!value.enabledLocales.includes(value.defaultLocale)) {
+      context.addIssue({
+        code: "custom",
+        path: ["defaultLocale"],
+        message: "defaultLocale must be included in enabledLocales",
+      });
+    }
+  });
 export type RestaurantOnboardingInput = z.infer<typeof restaurantOnboardingSchema>;
 
 export const reservationStatusSchema = z.enum([
