@@ -7,10 +7,60 @@ import {
   createReservationSchema,
   eventLeadListQuerySchema,
   reservationListQuerySchema,
+  restaurantOnboardingSchema,
   updateEventLeadStatusSchema,
   updateMenuSchema,
   updateReservationStatusSchema,
 } from "./index";
+
+const validOnboarding = {
+  publicName: "Mandy Bistro",
+  locationName: "Principal",
+  slug: "mandy-bistro",
+  countryCode: "PT",
+  timezone: "Europe/Lisbon",
+  currency: "EUR",
+  defaultLocale: "pt-PT" as const,
+  enabledLocales: ["pt-PT", "en"] as const,
+};
+
+describe("restaurant onboarding contracts", () => {
+  it("accepts valid regional configuration and normalizes country/currency", () => {
+    const parsed = restaurantOnboardingSchema.parse({
+      ...validOnboarding,
+      countryCode: "pt",
+      currency: "eur",
+      enabledLocales: ["pt-PT", "en"],
+    });
+
+    expect(parsed.countryCode).toBe("PT");
+    expect(parsed.currency).toBe("EUR");
+    expect(parsed.timezone).toBe("Europe/Lisbon");
+  });
+
+  it("rejects unknown country, currency and timezone values", () => {
+    expect(restaurantOnboardingSchema.safeParse({ ...validOnboarding, countryCode: "ZZ" }).success).toBe(false);
+    expect(restaurantOnboardingSchema.safeParse({ ...validOnboarding, currency: "ZZZ" }).success).toBe(false);
+    expect(restaurantOnboardingSchema.safeParse({ ...validOnboarding, timezone: "Mars/Olympus" }).success).toBe(false);
+  });
+
+  it("requires unique enabled locales and the default locale to be enabled", () => {
+    expect(
+      restaurantOnboardingSchema.safeParse({
+        ...validOnboarding,
+        enabledLocales: ["pt-PT", "pt-PT"],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      restaurantOnboardingSchema.safeParse({
+        ...validOnboarding,
+        defaultLocale: "pt-PT",
+        enabledLocales: ["en", "es"],
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe("reservation contracts", () => {
   it("accepts a valid reservation and coerces dates", () => {
