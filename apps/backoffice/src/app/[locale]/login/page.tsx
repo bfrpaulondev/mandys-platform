@@ -5,36 +5,30 @@ import { notFound } from "next/navigation";
 import { LoginForm } from "./login-form";
 
 const copy = {
-  "pt-PT": {
-    eyebrow: "Mandy's Backoffice",
-    title: "Entre na operação do seu restaurante.",
-    subtitle: "Aceda às reservas, menu, clientes e módulos do Mandy's.",
-  },
-  "pt-BR": {
-    eyebrow: "Mandy's Backoffice",
-    title: "Entre na operação do seu restaurante.",
-    subtitle: "Acesse reservas, cardápio, clientes e módulos do Mandy's.",
-  },
-  en: {
-    eyebrow: "Mandy's Backoffice",
-    title: "Run your restaurant from one place.",
-    subtitle: "Access reservations, menu, customers and Mandy's modules.",
-  },
-  es: {
-    eyebrow: "Mandy's Backoffice",
-    title: "Gestiona tu restaurante desde un solo lugar.",
-    subtitle: "Accede a reservas, carta, clientes y módulos de Mandy's.",
-  },
+  "pt-PT": { eyebrow: "Mandy's Backoffice", title: "Entre na operação do seu restaurante.", subtitle: "Aceda às reservas, menu, clientes e módulos do Mandy's." },
+  "pt-BR": { eyebrow: "Mandy's Backoffice", title: "Entre na operação do seu restaurante.", subtitle: "Acesse reservas, cardápio, clientes e módulos do Mandy's." },
+  en: { eyebrow: "Mandy's Backoffice", title: "Run your restaurant from one place.", subtitle: "Access reservations, menu, customers and Mandy's modules." },
+  es: { eyebrow: "Mandy's Backoffice", title: "Gestiona tu restaurante desde un solo lugar.", subtitle: "Accede a reservas, carta, clientes y módulos de Mandy's." },
 } as const satisfies Record<Locale, Record<string, string>>;
+
+function safeNext(raw: string | string[] | undefined, locale: Locale) {
+  if (typeof raw !== "string") return undefined;
+  if (!raw.startsWith(`/${locale}/`) || raw.startsWith("//") || raw.includes("\\")) return undefined;
+  return raw.slice(0, 500);
+}
 
 export default async function LoginPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ next?: string | string[] }>;
 }) {
   const { locale: rawLocale } = await params;
   if (!isLocale(rawLocale)) notFound();
   const c = copy[rawLocale];
+  const query = await searchParams;
+  const nextPath = safeNext(query.next, rawLocale);
 
   return (
     <main className="grid min-h-screen place-items-center px-4 py-12">
@@ -42,7 +36,7 @@ export default async function LoginPage({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mandys-accent)]">{c.eyebrow}</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">{c.title}</h1>
         <p className="mt-3 text-sm leading-6 text-[var(--mandys-foreground-muted)]">{c.subtitle}</p>
-        <LoginForm locale={rawLocale} />
+        <LoginForm locale={rawLocale} nextPath={nextPath} />
       </Surface>
     </main>
   );
