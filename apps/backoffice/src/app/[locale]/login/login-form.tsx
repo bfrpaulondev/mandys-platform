@@ -15,7 +15,7 @@ const copy = {
 
 type Mode = "sign-in" | "sign-up" | "recover";
 
-export function LoginForm({ locale, nextPath }: { locale: Locale; nextPath?: string }) {
+export function LoginForm({ locale, nextPath }: { locale: Locale; nextPath: string | undefined }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("sign-in");
   const [pending, setPending] = useState(false);
