@@ -32,6 +32,13 @@ async function signInRequest(page, email, password) {
   });
 }
 
+async function setActiveOrganization(page, organizationId) {
+  return page.request.post(`${backofficeOrigin}/api/auth/organization/set-active`, {
+    headers: { accept: "application/json", "content-type": "application/json" },
+    data: { organizationId },
+  });
+}
+
 async function deleteTenant(page) {
   return page.request.delete(`${backofficeOrigin}/api/data-protection/v1/tenant`, {
     headers: { accept: "application/json", "content-type": "application/json" },
@@ -51,6 +58,7 @@ test("authenticated user can change password without losing active restaurant co
   const user = identity();
   let userCreated = false;
   let tenantCreated = false;
+  let organizationId = null;
   let currentPassword = user.password;
 
   try {
@@ -67,14 +75,11 @@ test("authenticated user can change password without losing active restaurant co
     });
     expect(organization.ok(), `organization returned ${organization.status()}: ${await organization.text()}`).toBeTruthy();
     const organizationBody = await organization.json();
-    const organizationId = organizationBody?.id ?? organizationBody?.data?.id ?? organizationBody?.organization?.id;
+    organizationId = organizationBody?.id ?? organizationBody?.data?.id ?? organizationBody?.organization?.id;
     expect(typeof organizationId).toBe("string");
     tenantCreated = true;
 
-    const active = await page.request.post(`${backofficeOrigin}/api/auth/organization/set-active`, {
-      headers: { accept: "application/json", "content-type": "application/json" },
-      data: { organizationId },
-    });
+    const active = await setActiveOrganization(page, organizationId);
     expect(active.ok(), `set-active returned ${active.status()}: ${await active.text()}`).toBeTruthy();
 
     const onboarding = await page.request.post(`${backofficeOrigin}/api/runtime/v1/onboarding/restaurant`, {
@@ -106,14 +111,9 @@ test("authenticated user can change password without losing active restaurant co
     });
     expect(dashboard.ok(), `active restaurant context was lost after password change: ${dashboard.status()} ${await dashboard.text()}`).toBeTruthy();
 
-    const tenantDelete = await deleteTenant(page);
-    expect(tenantDelete.ok(), `tenant cleanup returned ${tenantDelete.status()}: ${await tenantDelete.text()}`).toBeTruthy();
-    tenantCreated = false;
-
-    const signOut = await page.request.post(`${backofficeOrigin}/api/auth/sign-out`, {
-      headers: { accept: "application/json", "content-type": "application/json" },
-    });
-    expect(signOut.ok()).toBeTruthy();
+    // Isolate credential verification from tenant-deletion/session-side effects.
+    // Browser and page.request share cookies, so clearing them creates a clean unauthenticated context.
+    await page.context().clearCookies();
 
     const oldPassword = await signInRequest(page, user.email, user.password);
     expect(oldPassword.ok(), "old password unexpectedly authenticated after password change").toBeFalsy();
@@ -121,12 +121,26 @@ test("authenticated user can change password without losing active restaurant co
     const newPassword = await signInRequest(page, user.email, user.nextPassword);
     expect(newPassword.ok(), `new password sign-in returned ${newPassword.status()}: ${await newPassword.text()}`).toBeTruthy();
 
+    const reactivated = await setActiveOrganization(page, organizationId);
+    expect(reactivated.ok(), `reactivate organization returned ${reactivated.status()}: ${await reactivated.text()}`).toBeTruthy();
+
+    const tenantDelete = await deleteTenant(page);
+    expect(tenantDelete.ok(), `tenant cleanup returned ${tenantDelete.status()}: ${await tenantDelete.text()}`).toBeTruthy();
+    tenantCreated = false;
+
     const accountDelete = await deleteUser(page, user.nextPassword);
     expect(accountDelete.ok(), `user cleanup returned ${accountDelete.status()}: ${await accountDelete.text()}`).toBeTruthy();
     userCreated = false;
   } finally {
-    if (tenantCreated) {
+    if (tenantCreated && organizationId) {
       try {
+        const session = await page.request.get(`${backofficeOrigin}/api/auth/get-session`, {
+          headers: { accept: "application/json" },
+        });
+        if (!session.ok() || (await session.text()) === "null") {
+          await signInRequest(page, user.email, currentPassword);
+        }
+        await setActiveOrganization(page, organizationId);
         const tenant = await deleteTenant(page);
         if (tenant.ok()) tenantCreated = false;
       } catch {
