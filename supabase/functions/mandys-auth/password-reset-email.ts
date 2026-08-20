@@ -3,12 +3,6 @@ type PasswordResetEmailInput = {
   url: string;
 };
 
-type EdgeRuntimeApi = {
-  waitUntil(promise: Promise<unknown>): void;
-};
-
-declare const EdgeRuntime: EdgeRuntimeApi | undefined;
-
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -27,19 +21,21 @@ function render(url: string) {
   };
 }
 
-async function deliverPasswordResetEmail(input: PasswordResetEmailInput) {
+export async function deliverPasswordResetEmail(input: PasswordResetEmailInput) {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   const from = Deno.env.get("MANDYS_EMAIL_FROM");
   const providerReady = Deno.env.get("MANDYS_EMAIL_PROVIDER_READY") === "true";
 
   if (!apiKey || !from || !providerReady) {
     console.error("password reset email unavailable: provider not configured");
-    return;
+    throw new Error("PASSWORD_RESET_EMAIL_PROVIDER_UNAVAILABLE");
   }
 
   const rendered = render(input.url);
+  let response: Response;
+
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -54,20 +50,13 @@ async function deliverPasswordResetEmail(input: PasswordResetEmailInput) {
         html: rendered.html,
       }),
     });
-
-    if (!response.ok) {
-      console.error(`password reset email provider failure: HTTP_${response.status}`);
-    }
   } catch {
     console.error("password reset email provider failure: network error");
+    throw new Error("PASSWORD_RESET_EMAIL_DELIVERY_FAILED");
   }
-}
 
-export function queuePasswordResetEmail(input: PasswordResetEmailInput) {
-  const task = deliverPasswordResetEmail(input);
-  if (typeof EdgeRuntime !== "undefined") {
-    EdgeRuntime.waitUntil(task);
-    return;
+  if (!response.ok) {
+    console.error(`password reset email provider failure: HTTP_${response.status}`);
+    throw new Error("PASSWORD_RESET_EMAIL_DELIVERY_FAILED");
   }
-  void task;
 }
