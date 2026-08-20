@@ -1,3 +1,4 @@
+import { isSupportedCountryCode, isSupportedCurrencyCode, isValidIanaTimezone } from "@mandys/contracts";
 import type { Locale } from "@mandys/i18n";
 
 export type OnboardingProgressInput = {
@@ -21,8 +22,6 @@ export type OnboardingChecklistItem = {
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function getOnboardingChecklist(input: OnboardingProgressInput): OnboardingChecklistItem[] {
-  const country = input.countryCode.trim();
-  const currency = input.currency.trim();
   const enabledLocales = new Set(input.enabledLocales);
 
   return [
@@ -30,23 +29,31 @@ export function getOnboardingChecklist(input: OnboardingProgressInput): Onboardi
       key: "identity",
       complete:
         input.publicName.trim().length >= 2 &&
+        input.publicName.trim().length <= 160 &&
         input.slug.length >= 2 &&
         input.slug.length <= 80 &&
         slugPattern.test(input.slug),
     },
     {
       key: "location",
-      complete: input.locationName.trim().length >= 2 && /^[A-Za-z]{2}$/.test(country),
+      complete:
+        input.locationName.trim().length >= 2 &&
+        input.locationName.trim().length <= 160 &&
+        isSupportedCountryCode(input.countryCode),
     },
     {
       key: "regional",
       complete:
-        input.timezone.trim().length > 0 &&
-        /^[A-Za-z]{3}$/.test(currency),
+        isValidIanaTimezone(input.timezone) &&
+        isSupportedCurrencyCode(input.currency),
     },
     {
       key: "languages",
-      complete: enabledLocales.size > 0 && enabledLocales.has(input.defaultLocale),
+      complete:
+        input.enabledLocales.length > 0 &&
+        input.enabledLocales.length <= 4 &&
+        enabledLocales.size === input.enabledLocales.length &&
+        enabledLocales.has(input.defaultLocale),
     },
   ];
 }
