@@ -9,6 +9,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import postgres from "postgres";
 
+import { queuePasswordResetEmail } from "./password-reset-email.ts";
+
 const databaseUrl = Deno.env.get("SUPABASE_DB_URL");
 if (!databaseUrl) throw new Error("SUPABASE_DB_URL is required");
 
@@ -182,7 +184,14 @@ const auth = betterAuth({
     member: authMember,
     invitation: authInvitation,
   } }),
-  emailAndPassword: { enabled: true },
+  emailAndPassword: {
+    enabled: true,
+    revokeSessionsOnPasswordReset: true,
+    resetPasswordTokenExpiresIn: 3600,
+    sendResetPassword: async ({ user, url }) => {
+      queuePasswordResetEmail({ email: user.email, url });
+    },
+  },
   user: {
     deleteUser: {
       enabled: true,
@@ -198,7 +207,12 @@ const auth = betterAuth({
       },
     },
   },
-  trustedOrigins: ["https://*.vercel.app", "https://*.mandys.pt", "https://mandys.pt"],
+  trustedOrigins: [
+    "https://*.vercel.app",
+    "https://*.mandys.pt",
+    "https://mandys.pt",
+    "https://mandyplataform.netlify.app",
+  ],
   plugins: [organization({
     ac,
     roles: { owner, manager, reception, kitchen, staff, marketing, accounting },
