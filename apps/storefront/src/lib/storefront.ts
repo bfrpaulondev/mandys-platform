@@ -67,6 +67,13 @@ export type StorefrontData = {
     closesAt: string;
     isClosed: boolean;
   }>;
+  specialOpeningHours: Array<{
+    serviceDate: string;
+    opensAt: string | null;
+    closesAt: string | null;
+    isClosed: boolean;
+    label: string | null;
+  }>;
   theme: {
     themeKey: string;
     variant: string;
@@ -193,6 +200,7 @@ function demoStorefront(locale: Locale): StorefrontData {
       { weekday: 5, opensAt: "12:00", closesAt: "23:30", isClosed: false },
       { weekday: 6, opensAt: "12:00", closesAt: "23:00", isClosed: false },
     ],
+    specialOpeningHours: [],
     theme: { themeKey: "minimal", variant: "light", tokens: {} },
     menus: [
       {
