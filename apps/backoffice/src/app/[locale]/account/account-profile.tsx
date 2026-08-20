@@ -7,10 +7,10 @@ import { authClient } from "../../../lib/auth-client";
 import { normalizeProfileName, validateProfileName } from "./profile-utils";
 
 const copy = {
-  "pt-PT": { loading: "A carregar o seu perfil…", loadError: "Não foi possível carregar o seu perfil.", retry: "Tentar novamente", name: "Nome", email: "Email", verified: "Email verificado", unverified: "Email ainda não verificado", save: "Guardar alterações", saving: "A guardar…", saved: "Perfil atualizado.", saveError: "Não foi possível atualizar o perfil.", invalidName: "Indique um nome entre 1 e 100 caracteres.", emailHint: "O email é gerido pela sua conta e pelas verificações de segurança.", avatarAlt: "Avatar do utilizador" },
-  "pt-BR": { loading: "Carregando seu perfil…", loadError: "Não foi possível carregar seu perfil.", retry: "Tentar novamente", name: "Nome", email: "Email", verified: "Email verificado", unverified: "Email ainda não verificado", save: "Salvar alterações", saving: "Salvando…", saved: "Perfil atualizado.", saveError: "Não foi possível atualizar o perfil.", invalidName: "Informe um nome entre 1 e 100 caracteres.", emailHint: "O email é gerenciado pela sua conta e pelas verificações de segurança.", avatarAlt: "Avatar do usuário" },
-  en: { loading: "Loading your profile…", loadError: "We couldn't load your profile.", retry: "Try again", name: "Name", email: "Email", verified: "Email verified", unverified: "Email not verified yet", save: "Save changes", saving: "Saving…", saved: "Profile updated.", saveError: "We couldn't update the profile.", invalidName: "Enter a name between 1 and 100 characters.", emailHint: "Email is managed by your account and its security checks.", avatarAlt: "User avatar" },
-  es: { loading: "Cargando tu perfil…", loadError: "No se pudo cargar tu perfil.", retry: "Intentar de nuevo", name: "Nombre", email: "Email", verified: "Email verificado", unverified: "Email aún no verificado", save: "Guardar cambios", saving: "Guardando…", saved: "Perfil actualizado.", saveError: "No se pudo actualizar el perfil.", invalidName: "Indica un nombre de entre 1 y 100 caracteres.", emailHint: "El email se gestiona desde tu cuenta y sus verificaciones de seguridad.", avatarAlt: "Avatar del usuario" },
+  "pt-PT": { loading: "A carregar o seu perfil…", loadError: "Não foi possível carregar o seu perfil.", retry: "Tentar novamente", name: "Nome", email: "Email", verified: "Email verificado", unverified: "Email ainda não verificado", verify: "Enviar email de verificação", verifying: "A enviar…", verificationSent: "Email de verificação enviado. Verifique também a pasta de spam.", verificationError: "Não foi possível enviar o email de verificação.", save: "Guardar alterações", saving: "A guardar…", saved: "Perfil atualizado.", saveError: "Não foi possível atualizar o perfil.", invalidName: "Indique um nome entre 1 e 100 caracteres.", emailHint: "O email é gerido pela sua conta e pelas verificações de segurança.", avatarAlt: "Avatar do utilizador" },
+  "pt-BR": { loading: "Carregando seu perfil…", loadError: "Não foi possível carregar seu perfil.", retry: "Tentar novamente", name: "Nome", email: "Email", verified: "Email verificado", unverified: "Email ainda não verificado", verify: "Enviar e-mail de verificação", verifying: "Enviando…", verificationSent: "E-mail de verificação enviado. Verifique também a pasta de spam.", verificationError: "Não foi possível enviar o e-mail de verificação.", save: "Salvar alterações", saving: "Salvando…", saved: "Perfil atualizado.", saveError: "Não foi possível atualizar o perfil.", invalidName: "Informe um nome entre 1 e 100 caracteres.", emailHint: "O email é gerenciado pela sua conta e pelas verificações de segurança.", avatarAlt: "Avatar do usuário" },
+  en: { loading: "Loading your profile…", loadError: "We couldn't load your profile.", retry: "Try again", name: "Name", email: "Email", verified: "Email verified", unverified: "Email not verified yet", verify: "Send verification email", verifying: "Sending…", verificationSent: "Verification email sent. Check your spam folder too.", verificationError: "We couldn't send the verification email.", save: "Save changes", saving: "Saving…", saved: "Profile updated.", saveError: "We couldn't update the profile.", invalidName: "Enter a name between 1 and 100 characters.", emailHint: "Email is managed by your account and its security checks.", avatarAlt: "User avatar" },
+  es: { loading: "Cargando tu perfil…", loadError: "No se pudo cargar tu perfil.", retry: "Intentar de nuevo", name: "Nombre", email: "Email", verified: "Email verificado", unverified: "Email aún no verificado", verify: "Enviar email de verificación", verifying: "Enviando…", verificationSent: "Email de verificación enviado. Revisa también la carpeta de spam.", verificationError: "No se pudo enviar el email de verificación.", save: "Guardar cambios", saving: "Guardando…", saved: "Perfil actualizado.", saveError: "No se pudo actualizar el perfil.", invalidName: "Indica un nombre de entre 1 y 100 caracteres.", emailHint: "El email se gestiona desde tu cuenta y sus verificaciones de seguridad.", avatarAlt: "Avatar del usuario" },
 } as const;
 
 type SupportedLocale = keyof typeof copy;
@@ -21,6 +21,7 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
   const session = authClient.useSession();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sendingVerification, setSendingVerification] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const user = session.data?.user;
   const normalizedInitialName = useMemo(() => normalizeProfileName(user?.name ?? ""), [user?.name]);
@@ -30,6 +31,7 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
   if (session.isPending) return <LoadingState label={c.loading} rows={3} />;
   if (session.error || !user) return <ErrorState title={c.loadError} description={c.loadError} retryLabel={c.retry} onRetry={() => void session.refetch()} />;
 
+  const accountUser = user;
   const normalizedName = normalizeProfileName(name);
   const unchanged = normalizedName === normalizedInitialName;
 
@@ -46,17 +48,30 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
     } catch { toast.error(c.saveError); } finally { setSaving(false); }
   }
 
+  async function sendVerification() {
+    if (accountUser.emailVerified || sendingVerification) return;
+    setSendingVerification(true);
+    try {
+      const result = await authClient.sendVerificationEmail({
+        email: accountUser.email,
+        callbackURL: `${window.location.origin}/${locale}/account`,
+      });
+      if (result.error) { toast.error(c.verificationError); return; }
+      toast.success(c.verificationSent);
+    } catch { toast.error(c.verificationError); } finally { setSendingVerification(false); }
+  }
+
   const initials = normalizedName.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "M";
 
   return (
     <Surface className="max-w-2xl p-5 sm:p-6">
       <div className="mb-6 flex items-center gap-4">
-        {user.image ? (
-          <img src={user.image} alt={c.avatarAlt} className="h-16 w-16 rounded-full border border-[var(--mandys-border)] object-cover" />
+        {accountUser.image ? (
+          <img src={accountUser.image} alt={c.avatarAlt} className="h-16 w-16 rounded-full border border-[var(--mandys-border)] object-cover" />
         ) : (
           <div aria-hidden="true" className="grid h-16 w-16 place-items-center rounded-full bg-[var(--mandys-surface-muted)] text-lg font-semibold">{initials}</div>
         )}
-        <div className="min-w-0"><p className="truncate font-semibold">{normalizedInitialName}</p><p className="truncate text-sm text-[var(--mandys-foreground-muted)]">{user.email}</p></div>
+        <div className="min-w-0"><p className="truncate font-semibold">{normalizedInitialName}</p><p className="truncate text-sm text-[var(--mandys-foreground-muted)]">{accountUser.email}</p></div>
       </div>
 
       <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void saveProfile(); }}>
@@ -68,8 +83,9 @@ export function AccountProfile({ locale }: { locale: SupportedLocale }) {
 
         <div>
           <label htmlFor="account-email" className="mb-1.5 block text-sm font-medium">{c.email}</label>
-          <input id="account-email" value={user.email} readOnly aria-readonly="true" className="min-h-11 w-full rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] bg-[var(--mandys-surface-muted)] px-3 py-2 text-sm text-[var(--mandys-foreground-muted)]" />
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--mandys-foreground-muted)]"><span className="rounded-full border border-[var(--mandys-border)] px-2 py-1">{user.emailVerified ? c.verified : c.unverified}</span><span>{c.emailHint}</span></div>
+          <input id="account-email" value={accountUser.email} readOnly aria-readonly="true" className="min-h-11 w-full rounded-[var(--mandys-radius-sm)] border border-[var(--mandys-border)] bg-[var(--mandys-surface-muted)] px-3 py-2 text-sm text-[var(--mandys-foreground-muted)]" />
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[var(--mandys-foreground-muted)]"><span className="rounded-full border border-[var(--mandys-border)] px-2 py-1">{accountUser.emailVerified ? c.verified : c.unverified}</span><span>{c.emailHint}</span></div>
+          {!accountUser.emailVerified ? <div className="mt-3"><Button type="button" variant="secondary" disabled={sendingVerification} aria-busy={sendingVerification} onClick={() => void sendVerification()}>{sendingVerification ? c.verifying : c.verify}</Button></div> : null}
         </div>
 
         <div className="flex justify-end"><Button type="submit" disabled={saving || unchanged} aria-busy={saving}>{saving ? c.saving : c.save}</Button></div>
