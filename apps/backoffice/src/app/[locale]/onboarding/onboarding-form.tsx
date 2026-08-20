@@ -2,9 +2,10 @@
 
 import { localeLabels, locales, type Locale } from "@mandys/i18n";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { authClient } from "../../../lib/auth-client";
+import { onboardingDraftKey, parseOnboardingDraft, serializeOnboardingDraft } from "./onboarding-draft";
 import { getOnboardingChecklist, onboardingCompletionPercent, type OnboardingChecklistKey } from "./onboarding-progress";
 
 type RegionDefaults = { countryCode: string; timezone: string; currency: string };
@@ -17,10 +18,10 @@ const defaults: Record<Locale, RegionDefaults> = {
 };
 
 const copy = {
-  "pt-PT": { publicName: "Nome público do restaurante", legalName: "Nome legal (opcional)", locationName: "Nome da localização", slug: "Identificador do restaurante", email: "Email", phone: "Telefone", address: "Morada", postalCode: "Código postal", city: "Cidade", country: "País (ISO 2)", timezone: "Fuso horário", currency: "Moeda (ISO 3)", languages: "Idiomas do site", submit: "Criar restaurante", genericError: "Não foi possível concluir a configuração.", slugHelp: "Usado internamente e nas primeiras URLs de demonstração. Pode ser alterado depois.", checklistTitle: "Checklist de configuração", checklistHelp: "Complete os quatro blocos essenciais antes de criar o restaurante.", completed: "concluído", identityStep: "Identidade", locationStep: "Localização", regionalStep: "Região e moeda", languagesStep: "Idiomas" },
-  "pt-BR": { publicName: "Nome público do restaurante", legalName: "Razão social (opcional)", locationName: "Nome da unidade", slug: "Identificador do restaurante", email: "E-mail", phone: "Telefone", address: "Endereço", postalCode: "CEP / código postal", city: "Cidade", country: "País (ISO 2)", timezone: "Fuso horário", currency: "Moeda (ISO 3)", languages: "Idiomas do site", submit: "Criar restaurante", genericError: "Não foi possível concluir a configuração.", slugHelp: "Usado internamente e nas primeiras URLs de demonstração. Pode ser alterado depois.", checklistTitle: "Checklist de configuração", checklistHelp: "Complete os quatro blocos essenciais antes de criar o restaurante.", completed: "concluído", identityStep: "Identidade", locationStep: "Unidade", regionalStep: "Região e moeda", languagesStep: "Idiomas" },
-  en: { publicName: "Restaurant public name", legalName: "Legal name (optional)", locationName: "Location name", slug: "Restaurant identifier", email: "Email", phone: "Phone", address: "Address", postalCode: "Postal code", city: "City", country: "Country (ISO 2)", timezone: "Timezone", currency: "Currency (ISO 3)", languages: "Website languages", submit: "Create restaurant", genericError: "We couldn't complete the setup.", slugHelp: "Used internally and for the first demo URLs. It can be changed later.", checklistTitle: "Setup checklist", checklistHelp: "Complete the four essential setup blocks before creating the restaurant.", completed: "complete", identityStep: "Identity", locationStep: "Location", regionalStep: "Region and currency", languagesStep: "Languages" },
-  es: { publicName: "Nombre público del restaurante", legalName: "Razón social (opcional)", locationName: "Nombre de la ubicación", slug: "Identificador del restaurante", email: "Correo electrónico", phone: "Teléfono", address: "Dirección", postalCode: "Código postal", city: "Ciudad", country: "País (ISO 2)", timezone: "Zona horaria", currency: "Moneda (ISO 3)", languages: "Idiomas del sitio", submit: "Crear restaurante", genericError: "No se pudo completar la configuración.", slugHelp: "Se usa internamente y en las primeras URL de demostración. Podrás cambiarlo después.", checklistTitle: "Checklist de configuración", checklistHelp: "Completa los cuatro bloques esenciales antes de crear el restaurante.", completed: "completado", identityStep: "Identidad", locationStep: "Ubicación", regionalStep: "Región y moneda", languagesStep: "Idiomas" },
+  "pt-PT": { publicName: "Nome público do restaurante", legalName: "Nome legal (opcional)", locationName: "Nome da localização", slug: "Identificador do restaurante", email: "Email", phone: "Telefone", address: "Morada", postalCode: "Código postal", city: "Cidade", country: "País (ISO 2)", timezone: "Fuso horário", currency: "Moeda (ISO 3)", languages: "Idiomas do site", submit: "Criar restaurante", genericError: "Não foi possível concluir a configuração.", slugHelp: "Usado internamente e nas primeiras URLs de demonstração. Pode ser alterado depois.", checklistTitle: "Checklist de configuração", checklistHelp: "Complete os quatro blocos essenciais antes de criar o restaurante.", completed: "concluído", identityStep: "Identidade", locationStep: "Localização", regionalStep: "Região e moeda", languagesStep: "Idiomas", draftRestored: "Rascunho retomado neste dispositivo.", draftSaved: "Progresso guardado neste dispositivo.", draftPrivacy: "O rascunho guarda apenas identidade, localização, região e idiomas; contacto e morada não ficam guardados localmente." },
+  "pt-BR": { publicName: "Nome público do restaurante", legalName: "Razão social (opcional)", locationName: "Nome da unidade", slug: "Identificador do restaurante", email: "E-mail", phone: "Telefone", address: "Endereço", postalCode: "CEP / código postal", city: "Cidade", country: "País (ISO 2)", timezone: "Fuso horário", currency: "Moeda (ISO 3)", languages: "Idiomas do site", submit: "Criar restaurante", genericError: "Não foi possível concluir a configuração.", slugHelp: "Usado internamente e nas primeiras URLs de demonstração. Pode ser alterado depois.", checklistTitle: "Checklist de configuração", checklistHelp: "Complete os quatro blocos essenciais antes de criar o restaurante.", completed: "concluído", identityStep: "Identidade", locationStep: "Unidade", regionalStep: "Região e moeda", languagesStep: "Idiomas", draftRestored: "Rascunho retomado neste dispositivo.", draftSaved: "Progresso salvo neste dispositivo.", draftPrivacy: "O rascunho salva apenas identidade, unidade, região e idiomas; contato e endereço não ficam salvos localmente." },
+  en: { publicName: "Restaurant public name", legalName: "Legal name (optional)", locationName: "Location name", slug: "Restaurant identifier", email: "Email", phone: "Phone", address: "Address", postalCode: "Postal code", city: "City", country: "Country (ISO 2)", timezone: "Timezone", currency: "Currency (ISO 3)", languages: "Website languages", submit: "Create restaurant", genericError: "We couldn't complete the setup.", slugHelp: "Used internally and for the first demo URLs. It can be changed later.", checklistTitle: "Setup checklist", checklistHelp: "Complete the four essential setup blocks before creating the restaurant.", completed: "complete", identityStep: "Identity", locationStep: "Location", regionalStep: "Region and currency", languagesStep: "Languages", draftRestored: "Draft resumed on this device.", draftSaved: "Progress saved on this device.", draftPrivacy: "The draft only stores identity, location, region and languages; contact details and address are not stored locally." },
+  es: { publicName: "Nombre público del restaurante", legalName: "Razón social (opcional)", locationName: "Nombre de la ubicación", slug: "Identificador del restaurante", email: "Correo electrónico", phone: "Teléfono", address: "Dirección", postalCode: "Código postal", city: "Ciudad", country: "País (ISO 2)", timezone: "Zona horaria", currency: "Moneda (ISO 3)", languages: "Idiomas del sitio", submit: "Crear restaurante", genericError: "No se pudo completar la configuración.", slugHelp: "Se usa internamente y en las primeras URL de demostración. Podrás cambiarlo después.", checklistTitle: "Checklist de configuración", checklistHelp: "Completa los cuatro bloques esenciales antes de crear el restaurante.", completed: "completado", identityStep: "Identidad", locationStep: "Ubicación", regionalStep: "Región y moneda", languagesStep: "Idiomas", draftRestored: "Borrador retomado en este dispositivo.", draftSaved: "Progreso guardado en este dispositivo.", draftPrivacy: "El borrador solo guarda identidad, ubicación, región e idiomas; contacto y dirección no se guardan localmente." },
 } as const satisfies Record<Locale, Record<string, string>>;
 
 const inputClass = "w-full rounded-xl border border-[var(--mandys-border)] bg-transparent px-3.5 py-3 text-sm outline-none transition focus:border-[var(--mandys-accent)]";
@@ -42,10 +43,51 @@ export function OnboardingForm({ locale }: { locale: Locale }) {
   const [currency, setCurrency] = useState(regional.currency);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftUserId, setDraftUserId] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
   const [enabledLocales, setEnabledLocales] = useState<Locale[]>(() => {
     const initial: Locale[] = locale === "pt-BR" ? ["pt-BR", "en", "es"] : [locale, "en", "es"];
     return [...new Set(initial)];
   });
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const session = await authClient.getSession();
+        if (!active || !session.data?.user.id) return;
+        const userId = session.data.user.id;
+        setDraftUserId(userId);
+        const restored = parseOnboardingDraft(window.localStorage.getItem(onboardingDraftKey(userId)));
+        if (restored) {
+          setPublicName(restored.publicName);
+          setSlug(restored.slug);
+          setSlugTouched(Boolean(restored.slug));
+          setLocationName(restored.locationName);
+          setCountryCode(restored.countryCode);
+          setTimezone(restored.timezone);
+          setCurrency(restored.currency);
+          setEnabledLocales(restored.enabledLocales);
+          setDraftRestored(true);
+        }
+      } finally {
+        if (active) setDraftReady(true);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady || !draftUserId) return;
+    setDraftSaved(false);
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(onboardingDraftKey(draftUserId), serializeOnboardingDraft({ publicName, slug, locationName, countryCode, timezone, currency, enabledLocales }));
+      setDraftSaved(true);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [countryCode, currency, draftReady, draftUserId, enabledLocales, locationName, publicName, slug, timezone]);
 
   const defaultLocale = useMemo<Locale>(() => enabledLocales.includes(locale) ? locale : (enabledLocales[0] ?? "pt-PT"), [enabledLocales, locale]);
   const checklist = useMemo(() => getOnboardingChecklist({ publicName, slug, locationName, countryCode, timezone, currency, defaultLocale, enabledLocales }), [countryCode, currency, defaultLocale, enabledLocales, locationName, publicName, slug, timezone]);
@@ -98,6 +140,7 @@ export function OnboardingForm({ locale }: { locale: Locale }) {
 
       const payload = (await response.json().catch(() => null)) as { message?: string } | null;
       if (!response.ok) { setError(payload?.message ?? c.genericError); return; }
+      if (draftUserId) window.localStorage.removeItem(onboardingDraftKey(draftUserId));
       router.push(`/${locale}`);
       router.refresh();
     } catch { setError(c.genericError); }
@@ -113,6 +156,7 @@ export function OnboardingForm({ locale }: { locale: Locale }) {
         </div>
         <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--mandys-border)]" aria-hidden="true"><div className="h-full bg-[var(--mandys-accent)] transition-[width] duration-300" style={{ width: `${completion}%` }} /></div>
         <ul className="mt-4 grid gap-2 sm:grid-cols-2">{checklist.map((item) => <li key={item.key} className="flex items-center gap-2 text-sm"><span aria-hidden="true" className="inline-grid size-5 place-items-center rounded-full border border-[var(--mandys-border)] text-xs">{item.complete ? "✓" : "·"}</span><span className={item.complete ? "font-medium" : "text-[var(--mandys-foreground-muted)]"}>{stepLabels[item.key]}</span></li>)}</ul>
+        <div className="mt-4 border-t border-[var(--mandys-border)] pt-3 text-xs leading-5 text-[var(--mandys-foreground-muted)]"><p aria-live="polite">{draftRestored ? c.draftRestored : draftSaved ? c.draftSaved : ""}</p><p>{c.draftPrivacy}</p></div>
       </section>
 
       <div className="grid gap-5 sm:grid-cols-2">
