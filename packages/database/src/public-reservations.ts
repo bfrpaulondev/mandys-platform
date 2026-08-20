@@ -6,7 +6,6 @@ import {
   domains,
   locations,
   moduleEntitlements,
-  openingHours,
   reservations,
   tenantSettings,
 } from "./schema";
@@ -110,33 +109,15 @@ export async function createPublicReservation(input: PublicReservationInput) {
       )
       .limit(1);
 
-    let serviceWindow = special ?? null;
-    if (!serviceWindow) {
-      const weekday = new Date(`${localStart.serviceDate}T12:00:00.000Z`).getUTCDay();
-      const [weekly] = await tx
-        .select({
-          opensAt: openingHours.opensAt,
-          closesAt: openingHours.closesAt,
-          isClosed: openingHours.isClosed,
-        })
-        .from(openingHours)
-        .where(
-          and(
-            eq(openingHours.organizationId, domain.organizationId),
-            eq(openingHours.locationId, location.id),
-            eq(openingHours.weekday, weekday),
-          ),
-        )
-        .limit(1);
-      serviceWindow = weekly ?? null;
-    }
-
+    // Special hours are an explicit date override. When no override exists we
+    // preserve the current reservation availability behavior instead of
+    // making weekly schedule configuration a new prerequisite.
     if (
-      !serviceWindow ||
+      special &&
       !reservationFitsOpeningWindow(
         localStart.minutes,
         localEnd.minutes + dayDelta * 24 * 60,
-        serviceWindow,
+        special,
       )
     ) {
       throw new PublicReservationUnavailableError("Reservation time is outside restaurant service hours");
