@@ -65,6 +65,7 @@ async function exportTenant(ctx: Context): Promise<Result> {
     const profiles = await tx<any[]>`select * from mandys.restaurant_profiles where organization_id=${ctx.organizationId}`;
     const locations = await tx<any[]>`select * from mandys.locations where organization_id=${ctx.organizationId}`;
     const openingHours = await tx<any[]>`select * from mandys.opening_hours where organization_id=${ctx.organizationId}`;
+    const specialOpeningHours = await tx<any[]>`select * from mandys.special_opening_hours where organization_id=${ctx.organizationId} order by service_date`;
     const domains = await tx<any[]>`select * from mandys.domains where organization_id=${ctx.organizationId}`;
     const moduleEntitlements = await tx<any[]>`select * from mandys.module_entitlements where organization_id=${ctx.organizationId}`;
     const themeEntitlements = await tx<any[]>`select * from mandys.theme_entitlements where organization_id=${ctx.organizationId}`;
@@ -109,7 +110,7 @@ async function exportTenant(ctx: Context): Promise<Result> {
       generatedAt: new Date().toISOString(),
       organization,
       team: { members, invitations },
-      settings: { tenantSettings, profiles, locations, openingHours, domains, moduleEntitlements, themeEntitlements, themeSettings },
+      settings: { tenantSettings, profiles, locations, openingHours, specialOpeningHours, domains, moduleEntitlements, themeEntitlements, themeSettings },
       menu: { menus, translations: menuTranslations, categories: menuCategories, categoryTranslations: menuCategoryTranslations, items: menuItems, itemTranslations: menuItemTranslations, allergens, itemAllergens: menuItemAllergens },
       customers,
       reservations: { reservations, exceptions: reservationExceptions, waitlist: reservationWaitlist, diningAreas, restaurantTables },
@@ -154,6 +155,7 @@ async function deleteTenant(ctx: Context, request: Request): Promise<Result> {
     await tx`delete from mandys.menus where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.restaurant_tables where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.dining_areas where organization_id=${ctx.organizationId}`;
+    await tx`delete from mandys.special_opening_hours where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.opening_hours where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.restaurant_profiles where organization_id=${ctx.organizationId}`;
     await tx`delete from mandys.ingredients where organization_id=${ctx.organizationId}`;
