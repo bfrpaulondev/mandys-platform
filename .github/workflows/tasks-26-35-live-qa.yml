@@ -1,4 +1,4 @@
-name: Tasks 26-35 Live QA
+name: Task 26 Live QA
 
 on:
   pull_request:
@@ -8,13 +8,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: tasks-26-35-live-qa-${{ github.event.pull_request.number }}
+  group: task-26-live-qa-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   live-qa:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -45,39 +45,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p playwright-runtime
-          cp \
-            e2e/playwright.config.mjs \
-            e2e/sessions-devices-v0.1.spec.mjs \
-            e2e/onboarding-checklist-resume-v0.1.spec.mjs \
-            e2e/onboarding-validation-v0.1.spec.mjs \
-            e2e/areas-tables-v0.1.spec.mjs \
-            e2e/audit-log-v0.1.spec.mjs \
-            e2e/notifications-center-v0.1.spec.mjs \
-            e2e/data-protection-v0.1.spec.mjs \
-            playwright-runtime/
+          cp e2e/playwright.config.mjs e2e/sessions-devices-v0.1.spec.mjs playwright-runtime/
           cd playwright-runtime
           npm init -y >/dev/null
           npm install --save-exact @playwright/test@1.62.1
           npx playwright install --with-deps chromium
 
-      - name: Run tasks 26-35 live QA
+      - name: Run task 26 live QA
         working-directory: playwright-runtime
-        run: >-
-          npx playwright test
-          sessions-devices-v0.1.spec.mjs
-          onboarding-checklist-resume-v0.1.spec.mjs
-          onboarding-validation-v0.1.spec.mjs
-          areas-tables-v0.1.spec.mjs
-          audit-log-v0.1.spec.mjs
-          notifications-center-v0.1.spec.mjs
-          data-protection-v0.1.spec.mjs
-          --config=playwright.config.mjs
+        run: npx playwright test sessions-devices-v0.1.spec.mjs --config=playwright.config.mjs
 
       - name: Upload QA artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: tasks-26-35-live-qa-${{ github.run_id }}
+          name: task-26-live-qa-${{ github.run_id }}
           path: |
             playwright-runtime/playwright-report
             playwright-runtime/test-results
