@@ -1,7 +1,16 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "./client";
-import { auditLogs, domains, locations, moduleEntitlements, reservations } from "./schema";
+import {
+  auditLogs,
+  domains,
+  locations,
+  moduleEntitlements,
+  openingHours,
+  reservations,
+  tenantSettings,
+} from "./schema";
+import { reservationFitsOpeningWindow, specialOpeningHours, zonedDateAndMinutes } from "./special-hours";
 import { withTenant } from "./tenant";
 
 export class PublicReservationUnavailableError extends Error {
@@ -24,6 +33,13 @@ export type PublicReservationInput = {
 
 function normalizeHostname(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0]!.split(":")[0]!;
+}
+
+function serviceDateDayDelta(startDate: string, endDate: string): number {
+  return Math.round(
+    (Date.parse(`${endDate}T00:00:00.000Z`) - Date.parse(`${startDate}T00:00:00.000Z`)) /
+      (24 * 60 * 60 * 1000),
+  );
 }
 
 export async function createPublicReservation(input: PublicReservationInput) {
@@ -54,6 +70,14 @@ export async function createPublicReservation(input: PublicReservationInput) {
       throw new PublicReservationUnavailableError();
     }
 
+    const [settings] = await tx
+      .select({ timezone: tenantSettings.timezone })
+      .from(tenantSettings)
+      .where(eq(tenantSettings.organizationId, domain.organizationId))
+      .limit(1);
+
+    if (!settings) throw new PublicReservationUnavailableError();
+
     const [location] = await tx
       .select({ id: locations.id })
       .from(locations)
@@ -62,6 +86,61 @@ export async function createPublicReservation(input: PublicReservationInput) {
       .limit(1);
 
     if (!location) throw new PublicReservationUnavailableError();
+
+    const localStart = zonedDateAndMinutes(input.startsAt, settings.timezone);
+    const localEnd = zonedDateAndMinutes(input.endsAt, settings.timezone);
+    const dayDelta = serviceDateDayDelta(localStart.serviceDate, localEnd.serviceDate);
+    if (dayDelta < 0 || dayDelta > 1) {
+      throw new PublicReservationUnavailableError("Reservation time is outside restaurant service hours");
+    }
+
+    const [special] = await tx
+      .select({
+        opensAt: specialOpeningHours.opensAt,
+        closesAt: specialOpeningHours.closesAt,
+        isClosed: specialOpeningHours.isClosed,
+      })
+      .from(specialOpeningHours)
+      .where(
+        and(
+          eq(specialOpeningHours.organizationId, domain.organizationId),
+          eq(specialOpeningHours.locationId, location.id),
+          eq(specialOpeningHours.serviceDate, localStart.serviceDate),
+        ),
+      )
+      .limit(1);
+
+    let serviceWindow = special ?? null;
+    if (!serviceWindow) {
+      const weekday = new Date(`${localStart.serviceDate}T12:00:00.000Z`).getUTCDay();
+      const [weekly] = await tx
+        .select({
+          opensAt: openingHours.opensAt,
+          closesAt: openingHours.closesAt,
+          isClosed: openingHours.isClosed,
+        })
+        .from(openingHours)
+        .where(
+          and(
+            eq(openingHours.organizationId, domain.organizationId),
+            eq(openingHours.locationId, location.id),
+            eq(openingHours.weekday, weekday),
+          ),
+        )
+        .limit(1);
+      serviceWindow = weekly ?? null;
+    }
+
+    if (
+      !serviceWindow ||
+      !reservationFitsOpeningWindow(
+        localStart.minutes,
+        localEnd.minutes + dayDelta * 24 * 60,
+        serviceWindow,
+      )
+    ) {
+      throw new PublicReservationUnavailableError("Reservation time is outside restaurant service hours");
+    }
 
     const identityMatch = input.guestEmail
       ? eq(reservations.guestEmail, input.guestEmail)
