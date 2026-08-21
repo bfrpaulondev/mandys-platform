@@ -2,6 +2,7 @@ import { isLocale, localeLabels, type Locale } from "@mandys/i18n";
 import { toCssVariables } from "@mandys/theme-core";
 import { minimalTheme } from "@mandys/theme-minimal";
 import type { Metadata } from "next";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import type { CSSProperties } from "react";
 
@@ -116,7 +117,19 @@ export default async function RestaurantPage({ params }: { params: Promise<{ loc
   return (
     <main style={themeStyle} className="min-h-screen bg-[var(--mandys-background)] text-[var(--mandys-foreground)]">
       <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
-        <a href={`/${locale}`} className="text-lg font-semibold tracking-[-0.04em]">{data.restaurant.publicName}</a>
+        <a href={`/${locale}`} className="flex items-center gap-3 text-lg font-semibold tracking-[-0.04em]">
+          {data.restaurant.logoUrl ? (
+            <Image
+              src={data.restaurant.logoUrl}
+              alt=""
+              width={40}
+              height={40}
+              sizes="40px"
+              className="h-10 w-10 rounded-full object-cover"
+            />
+          ) : null}
+          <span>{data.restaurant.publicName}</span>
+        </a>
         <div className="flex items-center gap-3">
           <a href={`/${locale}/events`} className="hidden text-sm font-medium text-[var(--mandys-foreground-muted)] hover:text-[var(--mandys-foreground)] sm:inline">{c.events}</a>
           <details className="relative text-sm">
@@ -146,23 +159,37 @@ export default async function RestaurantPage({ params }: { params: Promise<{ loc
           </div>
         </div>
 
-        <aside className="rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] p-6 shadow-[var(--mandys-shadow-sm)] sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mandys-accent)]">{data.location.name}</p>
-          {address.length > 0 ? <address className="mt-4 not-italic text-sm leading-6 text-[var(--mandys-foreground-muted)]">{address.map((line) => <div key={line}>{line}</div>)}</address> : null}
-          <div className="mt-7 border-t border-[var(--mandys-border)] pt-5">
-            <p className="text-sm font-semibold">{c.hours}</p>
-            <div className="mt-3 grid gap-2 text-sm">
-              {data.openingHours.map((row) => (
-                <div key={row.weekday} className="flex items-center justify-between gap-4 text-[var(--mandys-foreground-muted)]">
-                  <span>{weekdays[locale][row.weekday] ?? row.weekday}</span><span>{row.isClosed ? c.closed : `${row.opensAt}–${row.closesAt}`}</span>
-                </div>
-              ))}
+        <aside className="overflow-hidden rounded-[var(--mandys-radius-lg)] border border-[var(--mandys-border)] bg-[var(--mandys-surface)] shadow-[var(--mandys-shadow-sm)]">
+          {data.restaurant.coverUrl ? (
+            <div className="relative aspect-[4/3] w-full bg-[var(--mandys-surface-muted)]">
+              <Image
+                src={data.restaurant.coverUrl}
+                alt=""
+                fill
+                priority
+                sizes="(min-width: 1024px) 34vw, 100vw"
+                className="object-cover"
+              />
             </div>
-          </div>
-          <SpecialHoursNotice locale={locale} rows={data.specialOpeningHours} />
-          {(data.restaurant.contactPhone || data.restaurant.contactEmail) ? (
-            <div className="mt-7 border-t border-[var(--mandys-border)] pt-5"><p className="text-sm font-semibold">{c.contact}</p><div className="mt-2 space-y-1 text-sm text-[var(--mandys-foreground-muted)]">{data.restaurant.contactPhone ? <p>{data.restaurant.contactPhone}</p> : null}{data.restaurant.contactEmail ? <p>{data.restaurant.contactEmail}</p> : null}</div></div>
           ) : null}
+          <div className="p-6 sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--mandys-accent)]">{data.location.name}</p>
+            {address.length > 0 ? <address className="mt-4 not-italic text-sm leading-6 text-[var(--mandys-foreground-muted)]">{address.map((line) => <div key={line}>{line}</div>)}</address> : null}
+            <div className="mt-7 border-t border-[var(--mandys-border)] pt-5">
+              <p className="text-sm font-semibold">{c.hours}</p>
+              <div className="mt-3 grid gap-2 text-sm">
+                {data.openingHours.map((row) => (
+                  <div key={row.weekday} className="flex items-center justify-between gap-4 text-[var(--mandys-foreground-muted)]">
+                    <span>{weekdays[locale][row.weekday] ?? row.weekday}</span><span>{row.isClosed ? c.closed : `${row.opensAt}–${row.closesAt}`}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <SpecialHoursNotice locale={locale} rows={data.specialOpeningHours} />
+            {(data.restaurant.contactPhone || data.restaurant.contactEmail) ? (
+              <div className="mt-7 border-t border-[var(--mandys-border)] pt-5"><p className="text-sm font-semibold">{c.contact}</p><div className="mt-2 space-y-1 text-sm text-[var(--mandys-foreground-muted)]">{data.restaurant.contactPhone ? <p>{data.restaurant.contactPhone}</p> : null}{data.restaurant.contactEmail ? <p>{data.restaurant.contactEmail}</p> : null}</div></div>
+            ) : null}
+          </div>
         </aside>
       </section>
 
@@ -182,7 +209,19 @@ export default async function RestaurantPage({ params }: { params: Promise<{ loc
                         <div className="grid gap-x-10 md:grid-cols-2">
                           {category.items.map((item) => (
                             <article key={item.id} className="border-b border-[var(--mandys-border)] py-5">
-                              <div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h4 className="font-medium">{item.name}</h4>{item.isFeatured ? <span aria-label="featured" className="h-1.5 w-1.5 rounded-full bg-[var(--mandys-accent)]" /> : null}</div>{item.description ? <p className="mt-2 text-sm leading-6 text-[var(--mandys-foreground-muted)]">{item.description}</p> : null}</div><span className="whitespace-nowrap text-sm font-semibold">{money.format(item.priceCents / 100)}</span></div>
+                              <div className="flex items-start gap-4">
+                                {item.imageUrl ? (
+                                  <Image
+                                    src={item.imageUrl}
+                                    alt=""
+                                    width={112}
+                                    height={112}
+                                    sizes="112px"
+                                    className="h-28 w-28 shrink-0 rounded-[var(--mandys-radius-sm)] object-cover"
+                                  />
+                                ) : null}
+                                <div className="flex min-w-0 flex-1 items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h4 className="font-medium">{item.name}</h4>{item.isFeatured ? <span aria-label="featured" className="h-1.5 w-1.5 rounded-full bg-[var(--mandys-accent)]" /> : null}</div>{item.description ? <p className="mt-2 text-sm leading-6 text-[var(--mandys-foreground-muted)]">{item.description}</p> : null}</div><span className="whitespace-nowrap text-sm font-semibold">{money.format(item.priceCents / 100)}</span></div>
+                              </div>
                               {item.allergens.length > 0 ? <p className="mt-3 text-xs text-[var(--mandys-foreground-muted)]">{c.allergens}: {item.allergens.map((allergen) => allergen.name).join(", ")}</p> : null}
                             </article>
                           ))}
