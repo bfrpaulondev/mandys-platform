@@ -9,3 +9,4 @@ export * from "./menu";
 export * from "./events";
 export * from "./public-storefront";
 export * from "./public-reservations";
+export * from "./special-hours";

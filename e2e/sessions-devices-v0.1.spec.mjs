@@ -24,6 +24,13 @@ async function gotoRendered(page, url) {
   if (response) expect(response.status(), `${url} returned a server error`).toBeLessThan(500);
 }
 
+async function syncRequestCookiesToBrowser(page) {
+  const state = await page.request.storageState();
+  const cookies = state.cookies.filter((cookie) => cookie.domain === "mandyplataform.netlify.app");
+  expect(cookies.some((cookie) => cookie.name === "__Secure-mandys.session_token")).toBeTruthy();
+  await page.context().addCookies(cookies);
+}
+
 async function deleteTenant(page) {
   return page.request.delete(`${backofficeOrigin}/api/data-protection/v1/tenant`, {
     headers: { accept: "application/json", "content-type": "application/json" },
@@ -84,6 +91,11 @@ test("authenticated user can review devices and revoke other sessions", async ({
       },
     });
     expect(onboarding.ok(), `onboarding returned ${onboarding.status()}: ${await onboarding.text()}`).toBeTruthy();
+
+    // Requests made through Playwright's APIRequestContext keep their own cookie jar in
+    // hosted Chromium runs. Explicitly copy the authenticated Better Auth cookie into
+    // the browser context before exercising the real client-side session boundary.
+    await syncRequestCookiesToBrowser(page);
 
     const secondSignIn = await secondPage.request.post(`${backofficeOrigin}/api/auth/sign-in/email`, {
       headers: { accept: "application/json", "content-type": "application/json" },

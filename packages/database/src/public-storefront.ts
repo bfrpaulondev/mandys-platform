@@ -1,5 +1,5 @@
 import type { Locale } from "@mandys/contracts";
-import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { and, asc, eq, gte, isNotNull } from "drizzle-orm";
 
 import { db } from "./client";
 import {
@@ -18,6 +18,7 @@ import {
   tenantSettings,
   tenantThemeSettings,
 } from "./schema";
+import { specialOpeningHours, zonedDateAndMinutes } from "./special-hours";
 import { withTenant } from "./tenant";
 
 const supportedLocales: Locale[] = ["pt-PT", "pt-BR", "en", "es"];
@@ -126,7 +127,8 @@ export async function getPublicStorefrontByHostname(input: {
 
     if (!profile) throw new PublicStorefrontNotFoundError();
 
-    const [hours, themeSettings, publishedMenus, allMenuTranslations, categories, allCategoryTranslations, items, allItemTranslations, allergenLinks, tenantAllergens] =
+    const today = zonedDateAndMinutes(new Date(), settings.timezone).serviceDate;
+    const [hours, specialHours, themeSettings, publishedMenus, allMenuTranslations, categories, allCategoryTranslations, items, allItemTranslations, allergenLinks, tenantAllergens] =
       await Promise.all([
         tx
           .select({
@@ -143,6 +145,24 @@ export async function getPublicStorefrontByHostname(input: {
             ),
           )
           .orderBy(asc(openingHours.weekday)),
+        tx
+          .select({
+            serviceDate: specialOpeningHours.serviceDate,
+            opensAt: specialOpeningHours.opensAt,
+            closesAt: specialOpeningHours.closesAt,
+            isClosed: specialOpeningHours.isClosed,
+            label: specialOpeningHours.label,
+          })
+          .from(specialOpeningHours)
+          .where(
+            and(
+              eq(specialOpeningHours.organizationId, domain.organizationId),
+              eq(specialOpeningHours.locationId, location.id),
+              gte(specialOpeningHours.serviceDate, today),
+            ),
+          )
+          .orderBy(asc(specialOpeningHours.serviceDate))
+          .limit(12),
         tx
           .select({ themeKey: tenantThemeSettings.themeKey, variant: tenantThemeSettings.variant, tokens: tenantThemeSettings.tokens })
           .from(tenantThemeSettings)
@@ -280,6 +300,7 @@ export async function getPublicStorefrontByHostname(input: {
         email: location.email,
       },
       openingHours: hours,
+      specialOpeningHours: specialHours,
       theme: themeSettings ?? { themeKey: "minimal", variant: "light", tokens: {} },
       menus: publicMenus,
     };
