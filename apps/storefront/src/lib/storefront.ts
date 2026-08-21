@@ -13,7 +13,11 @@ export const STOREFRONT_REVALIDATE_SECONDS = 30;
 
 export class StorefrontUnavailableError extends Error {
   constructor(status?: number) {
-    super(status ? `Restaurant storefront runtime returned HTTP ${status}` : "Restaurant storefront runtime is unavailable");
+    super(
+      status
+        ? `Restaurant storefront runtime returned HTTP ${status}`
+        : "Restaurant storefront runtime is unavailable",
+    );
     this.name = "StorefrontUnavailableError";
   }
 }
@@ -77,6 +81,13 @@ export type StorefrontData = {
     closesAt: string;
     isClosed: boolean;
   }>;
+  specialOpeningHours: Array<{
+    serviceDate: string;
+    opensAt: string | null;
+    closesAt: string | null;
+    isClosed: boolean;
+    label: string | null;
+  }>;
   theme: {
     themeKey: string;
     variant: string;
@@ -87,37 +98,53 @@ export type StorefrontData = {
 
 type StorefrontResponse = { data: Omit<StorefrontData, "isDemo"> };
 
-export function classifyStorefrontResponseStatus(status: number): "ok" | "not-found" | "unavailable" {
+export function classifyStorefrontResponseStatus(
+  status: number,
+): "ok" | "not-found" | "unavailable" {
   if (status >= 200 && status < 300) return "ok";
   if (status === 404) return "not-found";
   return "unavailable";
 }
 
-const loadStorefrontForTenant = cache(async (hostname: string, locale: Locale): Promise<StorefrontData> => {
-  const params = new URLSearchParams({ hostname, locale });
-  let response: Response;
-  try {
-    response = await fetch(`${getPublicApiUrl()}/v1/public/storefront?${params.toString()}`, {
-      headers: { accept: "application/json" },
-      next: {
-        revalidate: STOREFRONT_REVALIDATE_SECONDS,
-        tags: [`storefront:${hostname}`, `storefront:${hostname}:${locale}`],
-      },
-    });
-  } catch {
-    throw new StorefrontUnavailableError();
-  }
+const loadStorefrontForTenant = cache(
+  async (hostname: string, locale: Locale): Promise<StorefrontData> => {
+    const params = new URLSearchParams({ hostname, locale });
+    let response: Response;
+    try {
+      response = await fetch(
+        `${getPublicApiUrl()}/v1/public/storefront?${params.toString()}`,
+        {
+          headers: { accept: "application/json" },
+          next: {
+            revalidate: STOREFRONT_REVALIDATE_SECONDS,
+            tags: [`storefront:${hostname}`, `storefront:${hostname}:${locale}`],
+          },
+        },
+      );
+    } catch {
+      throw new StorefrontUnavailableError();
+    }
 
-  const classification = classifyStorefrontResponseStatus(response.status);
-  if (classification === "not-found") notFound();
-  if (classification === "unavailable") throw new StorefrontUnavailableError(response.status);
+    const classification = classifyStorefrontResponseStatus(response.status);
+    if (classification === "not-found") notFound();
+    if (classification === "unavailable") {
+      throw new StorefrontUnavailableError(response.status);
+    }
 
-  const body = (await response.json().catch(() => null)) as StorefrontResponse | null;
-  if (!body?.data?.restaurant?.publicName || !body.data.location || !Array.isArray(body.data.menus)) {
-    throw new StorefrontUnavailableError();
-  }
-  return { ...body.data, isDemo: false };
-});
+    const body = (await response.json().catch(() => null)) as StorefrontResponse | null;
+    if (
+      !body?.data?.restaurant?.publicName ||
+      !body.data.location ||
+      !Array.isArray(body.data.openingHours) ||
+      !Array.isArray(body.data.specialOpeningHours) ||
+      !Array.isArray(body.data.menus)
+    ) {
+      throw new StorefrontUnavailableError();
+    }
+
+    return { ...body.data, isDemo: false };
+  },
+);
 
 export async function getStorefrontData(locale: Locale): Promise<StorefrontData> {
   const requestHeaders = await headers();
