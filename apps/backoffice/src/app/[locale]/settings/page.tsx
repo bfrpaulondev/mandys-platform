@@ -3,12 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { OperationsSettings } from "./operations-settings";
+import { SpecialHoursSettings } from "./special-hours-settings";
 
 const copy = {
-  "pt-PT": { back: "Voltar ao painel", title: "Operação", subtitle: "Horários, salas e mesas do restaurante." },
-  "pt-BR": { back: "Voltar ao painel", title: "Operação", subtitle: "Horários, salões e mesas do restaurante." },
-  en: { back: "Back to dashboard", title: "Operations", subtitle: "Restaurant hours, dining areas and tables." },
-  es: { back: "Volver al panel", title: "Operación", subtitle: "Horarios, zonas y mesas del restaurante." },
+  "pt-PT": { back: "Voltar ao painel", title: "Operação", subtitle: "Horários, feriados, salas e mesas do restaurante." },
+  "pt-BR": { back: "Voltar ao painel", title: "Operação", subtitle: "Horários, feriados, salões e mesas do restaurante." },
+  en: { back: "Back to dashboard", title: "Operations", subtitle: "Restaurant hours, holidays, dining areas and tables." },
+  es: { back: "Volver al panel", title: "Operación", subtitle: "Horarios, festivos, zonas y mesas del restaurante." },
 } as const;
 
 export default async function SettingsPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -26,7 +27,10 @@ export default async function SettingsPage({ params }: { params: Promise<{ local
         <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">{c.title}</h1>
         <p className="mt-2 text-sm text-[var(--mandys-foreground-muted)]">{c.subtitle}</p>
       </header>
-      <OperationsSettings locale={locale} />
+      <div className="space-y-6">
+        <SpecialHoursSettings locale={locale} />
+        <OperationsSettings locale={locale} />
+      </div>
     </main>
   );
 }

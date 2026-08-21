@@ -7,6 +7,7 @@ import type { CSSProperties } from "react";
 
 import { getStorefrontData } from "../../lib/storefront";
 import { ReservationForm } from "./reservation-form";
+import { SpecialHoursNotice } from "./special-hours-notice";
 
 const copy = {
   "pt-PT": {
@@ -158,6 +159,7 @@ export default async function RestaurantPage({ params }: { params: Promise<{ loc
               ))}
             </div>
           </div>
+          <SpecialHoursNotice locale={locale} rows={data.specialOpeningHours} />
           {(data.restaurant.contactPhone || data.restaurant.contactEmail) ? (
             <div className="mt-7 border-t border-[var(--mandys-border)] pt-5"><p className="text-sm font-semibold">{c.contact}</p><div className="mt-2 space-y-1 text-sm text-[var(--mandys-foreground-muted)]">{data.restaurant.contactPhone ? <p>{data.restaurant.contactPhone}</p> : null}{data.restaurant.contactEmail ? <p>{data.restaurant.contactEmail}</p> : null}</div></div>
           ) : null}
