@@ -18,9 +18,9 @@
   },
   "dependencies": {
     "@mandys/contracts": "workspace:*",
-    "drizzle-orm": "^0.45.2",
+    "drizzle-orm": "^0.45.4",
     "postgres": "^3.4.0",
-    "zod": "^4.0.0"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@mandys/tsconfig": "workspace:*",
